@@ -1,0 +1,700 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <title>SConnect — Local data sync</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #101827;
+      color: #e7edf7;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      --muted: #9aa9bd;
+      --line: #29364a;
+      --panel: #172235;
+      --blue: #78a9ff;
+      --green: #4bd39a;
+      --red: #ff8080;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; }
+    main { width: min(100% - 36px, 1040px); margin: 48px auto; }
+    header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+    h1, h2, p { margin-top: 0; }
+    h1 { margin-bottom: 8px; font-size: clamp(1.7rem, 4vw, 2.2rem); letter-spacing: -.04em; }
+    h2 { margin-bottom: 8px; font-size: 1rem; }
+    .subtitle, .hint { color: var(--muted); line-height: 1.55; }
+    .subtitle { margin-bottom: 0; }
+    .node-access { max-width: 48%; text-align: right; }
+    .node-badge { display: inline-block; padding: 9px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: .84rem; }
+    .node-badge::before { display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--green); content: ""; }
+    .address-info { margin: 8px 0 0; color: var(--muted); font-size: .8rem; line-height: 1.5; overflow-wrap: anywhere; }
+    .notice { padding: 12px 15px; margin-bottom: 22px; border: 1px solid #6c5930; border-radius: 10px; background: #30291c; color: #f1d99c; font-size: .9rem; line-height: 1.5; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, .82fr); gap: 18px; align-items: start; }
+    .panel { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+    .panel-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 18px; }
+    .count, .hint { color: var(--muted); font-size: .83rem; }
+    form { display: grid; gap: 10px; }
+    .peer-form { grid-template-columns: minmax(0, 1fr) auto; }
+    .remote-connect-form { grid-template-columns: minmax(0, 1fr) 130px auto; }
+    .record-form { margin-bottom: 20px; }
+    .record-fields { display: grid; grid-template-columns: .8fr 1.2fr; gap: 10px; }
+    input, textarea {
+      width: 100%; min-width: 0; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px;
+      outline: none; background: #111b2b; color: #e7edf7; font: inherit;
+    }
+    input:focus, textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #78a9ff22; }
+    textarea { min-height: 42px; max-height: 160px; resize: vertical; }
+    button { padding: 10px 14px; border: 0; border-radius: 8px; background: #3978e8; color: white; font: inherit; font-weight: 650; cursor: pointer; }
+    button:hover { background: #4b87f0; }
+    button:disabled { opacity: .55; cursor: wait; }
+    button.secondary { padding: 7px 10px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-size: .82rem; }
+    button.secondary:hover { border-color: #52617a; color: white; }
+    .peer-list { display: grid; gap: 9px; margin-top: 16px; }
+    .peer { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 9px; }
+    .remote-requests { display: grid; gap: 10px; margin-top: 14px; }
+    .remote-request { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 13px; border: 1px solid #806b39; border-radius: 9px; background: #30291c; }
+    .remote-request-info { min-width: 0; overflow-wrap: anywhere; }
+    .remote-request-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+    .remote-actions { display: flex; align-items: center; gap: 12px; margin: 12px 0; }
+    .remote-screen-wrap { display: none; padding: 8px; border: 1px solid var(--line); border-radius: 9px; background: #070b12; text-align: center; }
+    .remote-screen { display: block; width: auto; max-width: 100%; max-height: 70vh; margin: 0 auto; outline: none; cursor: crosshair; touch-action: none; }
+    body.remote-view-active { overflow: hidden; }
+    body.remote-view-active main { width: 100%; height: 100vh; margin: 0; }
+    body.remote-view-active main > :not(#remoteDesktopPanel) { display: none; }
+    body.remote-view-active #remoteDesktopPanel { display: flex; height: 100vh; flex-direction: column; padding: 12px; border: 0; border-radius: 0; }
+    body.remote-view-active #remoteDesktopPanel > :not(.remote-view-controls):not(.remote-screen-wrap) { display: none; }
+    body.remote-view-active .remote-view-controls { justify-content: flex-end; flex: 0 0 auto; margin: 0 0 8px; }
+    body.remote-view-active #remoteSessionStatus { margin-right: auto; }
+    body.remote-view-active .remote-screen-wrap { display: flex !important; flex: 1 1 auto; min-height: 0; align-items: center; justify-content: center; padding: 0; border: 0; }
+    body.remote-view-active .remote-screen { width: auto; max-width: 100%; max-height: 100%; }
+    #remoteDesktopPanel:fullscreen { display: flex; flex-direction: column; padding: 12px; border: 0; border-radius: 0; background: var(--panel); }
+    #remoteDesktopPanel:fullscreen .remote-screen-wrap { display: flex !important; flex: 1 1 auto; min-height: 0; align-items: center; justify-content: center; padding: 0; border: 0; }
+    #remoteDesktopPanel:fullscreen .remote-screen { max-height: 100%; }
+    .peer-address { overflow-wrap: anywhere; font: .88rem ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .peer-state { margin-top: 5px; color: var(--muted); font-size: .78rem; }
+    .peer-state.online { color: var(--green); }
+    .peer-state.offline { color: var(--red); }
+    .empty { padding: 20px 12px; border: 1px dashed var(--line); border-radius: 9px; color: var(--muted); text-align: center; font-size: .88rem; }
+    .hint { margin: 10px 0 0; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 9px; }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { background: #111b2b; color: var(--muted); font-size: .78rem; font-weight: 600; }
+    td { font-size: .88rem; }
+    tr:last-child td { border-bottom: 0; }
+    .data-key { color: #a8c7ff; font: .85rem ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
+    .data-value { max-width: 390px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .updated { color: var(--muted); white-space: nowrap; font-size: .8rem; }
+    .error { min-height: 20px; margin: 10px 0 0; color: var(--red); font-size: .86rem; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    footer { margin-top: 20px; color: var(--muted); font-size: .8rem; }
+    @media (max-width: 760px) {
+      main { margin: 28px auto; }
+      header { flex-direction: column; gap: 14px; }
+      .node-access { max-width: 100%; text-align: left; }
+      .layout { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 520px) {
+      main { width: min(100% - 24px, 1040px); }
+      .panel { padding: 15px; }
+      .peer-form, .record-fields { grid-template-columns: 1fr; }
+      .remote-connect-form { grid-template-columns: minmax(0, 1fr) 110px; }
+      .remote-request { align-items: stretch; flex-direction: column; }
+      .remote-request-actions { justify-content: flex-end; }
+      .peer-form button, .record-form > button { width: 100%; }
+      .remote-connect-form button { width: 100%; grid-column: 1 / -1; }
+      th, td { padding: 10px 9px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>SConnect</h1>
+        <p class="subtitle">Keep shared key/value data in sync across your systems.</p>
+      </div>
+      <div class="node-access">
+        <div class="node-badge" id="nodeInfo">Connecting…</div>
+        <p class="address-info" id="addressInfo"></p>
+      </div>
+    </header>
+
+    <aside class="notice">
+      Only trusted local-network or VPN devices should connect: anyone who can reach this app can read,
+      change, or delete its shared data. Restrict access with your firewall.
+    </aside>
+
+    <div class="layout">
+      <section class="panel" aria-labelledby="peersTitle">
+        <div class="panel-heading">
+          <div>
+            <h2 id="peersTitle">Connected systems</h2>
+            <span class="count" id="peerCount">No systems connected</span>
+          </div>
+        </div>
+        <form class="peer-form" id="peerForm">
+          <input id="peerAddress" name="address" placeholder="172.30.115.249" aria-label="Peer IP address and optional port" autocomplete="off" required>
+          <button type="submit">Connect system</button>
+        </form>
+        <p class="hint">Enter the other system's IP only. Port 3000 is used by default; add :port if that system uses a different port. Add each other's IP on both systems if you want both dashboards to list the connection.</p>
+        <p class="error" id="peerError" role="alert"></p>
+        <div class="peer-list" id="peerList"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="shareTitle">
+        <div class="panel-heading">
+          <div>
+            <h2 id="shareTitle">Share a value</h2>
+            <span class="count">Changes sync automatically</span>
+          </div>
+        </div>
+        <form class="record-form" id="recordForm">
+          <div class="record-fields">
+            <input id="dataKey" name="key" placeholder="Key (e.g. project)" maxlength="200" required>
+            <textarea id="dataValue" name="value" placeholder="Value to share" required></textarea>
+          </div>
+          <button type="submit">Add or update</button>
+          <p class="error" id="dataError" role="alert"></p>
+        </form>
+      </section>
+    </div>
+
+    <section class="panel" id="remoteDesktopPanel" style="margin-top:18px" aria-labelledby="remoteTitle">
+      <div class="panel-heading">
+        <div>
+          <h2 id="remoteTitle">Consent-based remote desktop</h2>
+          <span class="count">The remote user must accept before screen or input access starts</span>
+        </div>
+      </div>
+      <p class="hint">Both systems must be Windows PCs running this project on the same trusted LAN or VPN. Keep this portal open on the remote PC so its user can review and accept or deny each request. Screen, keyboard, and mouse access ends when either side disconnects or the remote user revokes it.</p>
+      <div class="remote-requests" id="remoteRequests" aria-live="polite"></div>
+      <p class="hint" id="remoteHostStatus">Connecting to the local consent monitor…</p>
+      <div class="remote-actions">
+        <span class="hint" id="hostSessionStatus">No incoming remote session.</span>
+        <button class="secondary" id="revokeRemoteSession" type="button" hidden>Revoke access</button>
+      </div>
+      <form class="remote-connect-form" id="remoteConnectForm">
+        <input id="remoteAddress" name="address" placeholder="172.30.115.249" aria-label="Remote system IP address" autocomplete="off" required>
+        <button type="submit">Request access</button>
+      </form>
+      <p class="hint">Enter only the remote system's private LAN or VPN IP. SConnect uses the same port as this portal (normally 3000), so both systems should use the same SConnect port.</p>
+      <p class="error" id="remoteError" role="alert"></p>
+      <div class="remote-actions remote-view-controls">
+        <span class="hint" id="remoteSessionStatus">No remote session.</span>
+        <button class="secondary" id="endRemoteSession" type="button" hidden>End session</button>
+        <button class="secondary" id="fullscreenRemoteSession" type="button" hidden>Full screen</button>
+      </div>
+      <div class="remote-screen-wrap" id="remoteScreenWrap">
+        <img class="remote-screen" id="remoteScreen" alt="Remote desktop. Focus this screen to send keyboard input." tabindex="0" draggable="false">
+      </div>
+    </section>
+
+    <section class="panel" style="margin-top:18px" aria-labelledby="dataTitle">
+      <div class="panel-heading">
+        <div>
+          <h2 id="dataTitle">Shared data</h2>
+          <span class="count" id="dataCount">0 items</span>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Key</th><th>Value</th><th>Updated</th><th><span class="sr-only">Actions</span></th></tr></thead>
+          <tbody id="dataBody"></tbody>
+        </table>
+      </div>
+      <footer>Data is stored locally in <code>data.json</code> and synchronized with configured peers.</footer>
+    </section>
+  </main>
+
+  <script>
+    const nodeInfo = document.getElementById('nodeInfo');
+    const addressInfo = document.getElementById('addressInfo');
+    const peerList = document.getElementById('peerList');
+    const peerCount = document.getElementById('peerCount');
+    const dataBody = document.getElementById('dataBody');
+    const peerError = document.getElementById('peerError');
+    const dataError = document.getElementById('dataError');
+    const remoteError = document.getElementById('remoteError');
+    const remoteHostStatus = document.getElementById('remoteHostStatus');
+    const hostSessionStatus = document.getElementById('hostSessionStatus');
+    const revokeRemoteSession = document.getElementById('revokeRemoteSession');
+    const remoteSessionStatus = document.getElementById('remoteSessionStatus');
+    const remoteScreen = document.getElementById('remoteScreen');
+    const remoteScreenWrap = document.getElementById('remoteScreenWrap');
+    const fullscreenRemoteSession = document.getElementById('fullscreenRemoteSession');
+    const remoteDesktopPanel = document.getElementById('remoteDesktopPanel');
+    let nodeId = 'SConnect system';
+    let requesterSocket = null;
+    let hostedSessionId = null;
+    let consentSocket = null;
+    let consentReconnectDelay = 1000;
+    function apiConnectionHint(url, status) {
+      const requestUrl = new URL(url, location.href);
+      return `This page is open at ${location.origin}, but that address is not serving the SConnect API for ${requestUrl.pathname} (HTTP ${status}). Start SConnect from its project folder with npm start, then open the exact address printed in its terminal. If port 3000 is used by another app, start SConnect with $env:PORT='3001'; npm start and use the printed port. Do not use Live Server or open the HTML file directly.`;
+    }
+
+    async function request(url, options) {
+      const response = await fetch(url, options);
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(`Expected JSON from ${new URL(url, location.href)}, but received ${contentType || 'an unknown response'} (HTTP ${response.status}). ${apiConnectionHint(url, response.status)}`);
+      }
+      let result;
+      try {
+        result = await response.json();
+      } catch {
+        throw new Error(`The server returned invalid JSON for ${new URL(url, location.href)} (HTTP ${response.status}). ${apiConnectionHint(url, response.status)}`);
+      }
+      if (!response.ok) throw new Error(result.error || `Request failed (${response.status})`);
+      return result;
+    }
+
+    function element(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+
+    function renderData({ data }) {
+      const entries = Object.entries(data || {}).sort(([a], [b]) => a.localeCompare(b));
+      document.getElementById('dataCount').textContent = `${entries.length} ${entries.length === 1 ? 'item' : 'items'}`;
+      dataBody.replaceChildren();
+
+      if (!entries.length) {
+        const row = dataBody.insertRow();
+        const cell = row.insertCell();
+        cell.colSpan = 4;
+        cell.className = 'empty';
+        cell.textContent = 'No shared data yet. Add a value above to get started.';
+        return;
+      }
+
+      for (const [key, item] of entries) {
+        const row = dataBody.insertRow();
+        row.insertCell().append(element('span', 'data-key', key));
+        const value = item.value;
+        const printable = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+        row.insertCell().append(element('div', 'data-value', printable ?? 'null'));
+        row.insertCell().append(element('span', 'updated', new Date(item.updatedAt).toLocaleString()));
+        const actionCell = row.insertCell();
+        const remove = element('button', 'secondary', 'Delete');
+        remove.type = 'button';
+        remove.setAttribute('aria-label', `Delete ${key}`);
+        remove.addEventListener('click', () => deleteData(key));
+        actionCell.append(remove);
+      }
+    }
+
+    function renderPeers(peers) {
+      peerList.replaceChildren();
+      peerCount.textContent = peers.length
+        ? `${peers.length} ${peers.length === 1 ? 'system' : 'systems'} configured`
+        : 'No systems connected';
+
+      if (!peers.length) {
+        peerList.append(element('div', 'empty', 'Add another SConnect system to start sharing data.'));
+        return;
+      }
+
+      for (const peer of peers) {
+        const card = element('div', 'peer');
+        const details = element('div');
+        details.append(element('div', 'peer-address', peer.address));
+        const statusText = peer.status === 'online'
+          ? `Online${peer.lastSeen ? ` · synced ${new Date(peer.lastSeen).toLocaleTimeString()}` : ''}`
+          : peer.status === 'offline'
+            ? `Offline · ${peer.error || 'will retry automatically'}`
+            : 'Checking connection…';
+        details.append(element('div', `peer-state ${peer.status}`, statusText));
+        const remove = element('button', 'secondary', 'Remove');
+        remove.type = 'button';
+        remove.addEventListener('click', () => removePeer(peer.address));
+        card.append(details, remove);
+        peerList.append(card);
+      }
+    }
+
+    async function refreshNode() {
+      const node = await request('/api/node');
+      nodeId = node.nodeId;
+      nodeInfo.textContent = `${node.nodeId} · port ${node.port}`;
+      addressInfo.textContent = `This system: ${(node.addresses || []).map((address) => `http://${address.includes(':') ? `[${address}]` : address}:${node.port}`).join(' · ')}`;
+      renderPeers(node.peers);
+    }
+
+    document.getElementById('peerForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      peerError.textContent = '';
+      const button = event.currentTarget.querySelector('button');
+      button.disabled = true;
+      try {
+        const address = document.getElementById('peerAddress').value.trim();
+        const result = await request('/api/peers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address })
+        });
+        renderPeers(result.peers);
+        document.getElementById('peerAddress').value = '';
+        await refreshNode();
+      } catch (error) {
+        peerError.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    document.getElementById('recordForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      dataError.textContent = '';
+      const button = event.currentTarget.querySelector('button');
+      button.disabled = true;
+      try {
+        const key = document.getElementById('dataKey').value.trim();
+        const value = document.getElementById('dataValue').value;
+        await request('/api/data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key, value })
+        });
+        document.getElementById('dataKey').value = '';
+        document.getElementById('dataValue').value = '';
+      } catch (error) {
+        dataError.textContent = error.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    async function removePeer(address) {
+      peerError.textContent = '';
+      try {
+        const result = await request('/api/peers', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address })
+        });
+        renderPeers(result.peers);
+      } catch (error) {
+        peerError.textContent = error.message;
+      }
+    }
+
+    async function deleteData(key) {
+      dataError.textContent = '';
+      try {
+        await request(`/api/data/${encodeURIComponent(key)}`, { method: 'DELETE' });
+      } catch (error) {
+        dataError.textContent = error.message;
+      }
+    }
+
+    function isPrivateAddress(address) {
+      const parts = address.split('.').map(Number);
+      if (parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)) {
+        return parts[0] === 10 ||
+          (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+          (parts[0] === 192 && parts[1] === 168) ||
+          (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) ||
+          parts[0] === 127;
+      }
+      if (!address.includes(':')) return false;
+      try {
+        const hostname = new URL(`http://[${address}]/`).hostname;
+        return hostname === '[::1]' || /^\[?f[cd]/i.test(hostname) || /^\[?fe[89ab]/i.test(hostname);
+      } catch {
+        return false;
+      }
+    }
+
+    function makeRemoteRequestCard(packet) {
+      const card = element('div', 'remote-request');
+      card.dataset.sessionId = packet.sessionId;
+      const info = element('div', 'remote-request-info');
+      info.append(
+        element('strong', '', `${packet.requesterName || 'Remote system'} is requesting desktop access`),
+        element('div', 'peer-state', `Source IP: ${packet.requesterAddress || 'unknown'}. Accepting shares this PC’s screen and allows remote mouse and keyboard input until the session ends.`)
+      );
+      const actions = element('div', 'remote-request-actions');
+      const decline = element('button', 'secondary', 'Decline');
+      decline.type = 'button';
+      decline.addEventListener('click', () => {
+        sendConsentMessage({ type: 'DENY', sessionId: packet.sessionId });
+        card.remove();
+      });
+      const accept = element('button', '', 'Accept access');
+      accept.type = 'button';
+      accept.addEventListener('click', () => {
+        accept.disabled = true;
+        decline.disabled = true;
+        sendConsentMessage({ type: 'APPROVE', sessionId: packet.sessionId });
+        hostSessionStatus.textContent = 'Starting the approved remote desktop session…';
+      });
+      actions.append(decline, accept);
+      card.append(info, actions);
+      return card;
+    }
+
+    function sendConsentMessage(packet) {
+      if (consentSocket?.readyState === WebSocket.OPEN) {
+        consentSocket.send(JSON.stringify(packet));
+      }
+    }
+
+    function connectConsentMonitor() {
+      const socketProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const socket = new WebSocket(`${socketProtocol}//${location.host}/remote`);
+      consentSocket = socket;
+      socket.addEventListener('open', () => {
+        if (consentSocket === socket) socket.send(JSON.stringify({ type: 'WATCH' }));
+      });
+      socket.addEventListener('message', (event) => {
+        if (consentSocket !== socket) return;
+        let packet;
+        try {
+          packet = JSON.parse(event.data);
+        } catch {
+          remoteHostStatus.textContent = 'Received an invalid consent message.';
+          return;
+        }
+
+        if (packet.type === 'READY') {
+          consentReconnectDelay = 1000;
+          remoteHostStatus.textContent = 'This PC is ready to receive consent-gated requests while this portal stays open.';
+        } else if (packet.type === 'REQUEST') {
+          const existingCard = document.querySelector(`[data-session-id="${CSS.escape(packet.sessionId)}"]`);
+          if (!existingCard) {
+            document.getElementById('remoteRequests').append(makeRemoteRequestCard(packet));
+          }
+        } else if (packet.type === 'REQUEST_EXPIRED' || packet.type === 'REQUEST_CLOSED') {
+          document.querySelector(`[data-session-id="${CSS.escape(packet.sessionId)}"]`)?.remove();
+        } else if (packet.type === 'SESSION_STARTED') {
+          hostedSessionId = packet.sessionId;
+          document.querySelector(`[data-session-id="${CSS.escape(packet.sessionId)}"]`)?.remove();
+          hostSessionStatus.textContent = `Remote desktop active with ${packet.requesterName || 'remote system'} (${packet.requesterAddress || 'unknown IP'}).`;
+          revokeRemoteSession.hidden = false;
+          revokeRemoteSession.disabled = false;
+        } else if (packet.type === 'SESSION_ENDED') {
+          clearHostedSession(packet.reason ? `Remote session ended: ${packet.reason}` : 'Remote session ended.');
+        } else if (packet.type === 'ERROR') {
+          remoteHostStatus.textContent = packet.message;
+        }
+      });
+      socket.addEventListener('close', () => {
+        if (consentSocket !== socket) return;
+        consentSocket = null;
+        remoteHostStatus.textContent = 'Consent monitor disconnected. Reconnecting automatically…';
+        clearHostedSession('Remote session stopped because the local portal disconnected.');
+        setTimeout(() => {
+          connectConsentMonitor();
+        }, consentReconnectDelay);
+        consentReconnectDelay = Math.min(consentReconnectDelay * 2, 10_000);
+      });
+      socket.addEventListener('error', () => {
+        if (consentSocket === socket) {
+          remoteHostStatus.textContent = 'Could not connect the consent monitor. Reconnecting automatically…';
+        }
+      });
+    }
+
+    function clearHostedSession(reason) {
+      hostedSessionId = null;
+      revokeRemoteSession.hidden = true;
+      hostSessionStatus.textContent = reason || 'No incoming remote session.';
+      document.querySelectorAll('.remote-request').forEach((card) => card.remove());
+    }
+
+    const socketProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    connectConsentMonitor();
+
+    revokeRemoteSession.addEventListener('click', () => {
+      sendConsentMessage({ type: 'REVOKE' });
+      revokeRemoteSession.disabled = true;
+    });
+
+    function closeRequester(reason) {
+      if (requesterSocket) {
+        requesterSocket.close();
+        requesterSocket = null;
+      }
+      document.body.classList.remove('remote-view-active');
+      fullscreenRemoteSession.hidden = true;
+      fullscreenRemoteSession.textContent = 'Full screen';
+      if (document.fullscreenElement === remoteDesktopPanel) {
+        document.exitFullscreen().catch((error) => console.warn('Could not exit fullscreen:', error));
+      }
+      remoteScreenWrap.style.display = 'none';
+      remoteScreen.removeAttribute('src');
+      document.getElementById('endRemoteSession').hidden = true;
+      remoteSessionStatus.textContent = reason || 'No remote session.';
+    }
+
+    document.getElementById('remoteConnectForm').addEventListener('submit', (event) => {
+      event.preventDefault();
+      remoteError.textContent = '';
+      if (requesterSocket) closeRequester('Previous request closed.');
+
+      const address = document.getElementById('remoteAddress').value.trim().replace(/^\[|\]$/g, '');
+      if (!isPrivateAddress(address)) {
+        remoteError.textContent = 'Enter a private LAN or VPN IP address, such as 172.30.115.249. Public IP addresses are not allowed.';
+        return;
+      }
+
+      const port = location.port || (location.protocol === 'https:' ? '443' : '80');
+      const host = address.includes(':') ? `[${address}]` : address;
+      const socket = new WebSocket(`${socketProtocol}//${host}:${port}/remote`);
+      requesterSocket = socket;
+      let closeReason = 'Remote connection closed.';
+      remoteSessionStatus.textContent = `Connecting to ${address}…`;
+      socket.addEventListener('open', () => {
+        socket.send(JSON.stringify({ type: 'REQUEST', requesterName: nodeId }));
+      });
+      socket.addEventListener('message', (messageEvent) => {
+        let packet;
+        try {
+          packet = JSON.parse(messageEvent.data);
+        } catch {
+          remoteSessionStatus.textContent = 'The remote system returned an invalid response.';
+          return;
+        }
+        if (packet.type === 'PENDING') {
+          remoteSessionStatus.textContent = 'Request sent. Waiting for the person at the remote PC to accept…';
+          document.getElementById('endRemoteSession').hidden = false;
+        } else if (packet.type === 'APPROVED') {
+          remoteSessionStatus.textContent = 'Access accepted. You can now control the remote desktop below.';
+          document.body.classList.add('remote-view-active');
+          remoteScreenWrap.style.display = 'block';
+          document.getElementById('endRemoteSession').hidden = false;
+          fullscreenRemoteSession.hidden = false;
+          remoteScreen.focus();
+        } else if (packet.type === 'FRAME') {
+          remoteScreen.src = `data:image/jpeg;base64,${packet.image}`;
+          remoteScreenWrap.style.display = 'block';
+        } else if (packet.type === 'DENIED') {
+          closeReason = packet.reason || 'The remote user declined the request.';
+          remoteSessionStatus.textContent = closeReason;
+          document.getElementById('endRemoteSession').hidden = true;
+        } else if (packet.type === 'SESSION_ENDED') {
+          closeRequester(packet.reason ? `Remote session ended: ${packet.reason}` : 'Remote session ended.');
+        } else if (packet.type === 'ERROR') {
+          closeReason = packet.message || 'Remote session error.';
+          remoteSessionStatus.textContent = closeReason;
+        }
+      });
+      socket.addEventListener('error', () => {
+        closeReason = 'Could not connect to the remote system. Check that SConnect is running, the IP and port are correct, and the firewall allows the VPN/LAN connection.';
+        remoteSessionStatus.textContent = closeReason;
+      });
+      socket.addEventListener('close', () => {
+        if (requesterSocket === socket) closeRequester(closeReason);
+      });
+    });
+
+    document.getElementById('endRemoteSession').addEventListener('click', () => {
+      closeRequester('You ended the remote session.');
+    });
+
+    fullscreenRemoteSession.addEventListener('click', async () => {
+      try {
+        if (document.fullscreenElement === remoteDesktopPanel) {
+          await document.exitFullscreen();
+        } else {
+          await remoteDesktopPanel.requestFullscreen();
+        }
+        fullscreenRemoteSession.textContent = document.fullscreenElement === remoteDesktopPanel
+          ? 'Exit full screen'
+          : 'Full screen';
+      } catch (error) {
+        remoteError.textContent = `Could not change fullscreen mode: ${error.message}`;
+      }
+    });
+    document.addEventListener('fullscreenchange', () => {
+      fullscreenRemoteSession.textContent = document.fullscreenElement === remoteDesktopPanel
+        ? 'Exit full screen'
+        : 'Full screen';
+    });
+
+    function sendRemoteInput(packet) {
+      if (requesterSocket?.readyState === WebSocket.OPEN) {
+        requesterSocket.send(JSON.stringify(packet));
+      }
+    }
+
+    let lastMouseMove = 0;
+    remoteScreen.addEventListener('mousemove', (event) => {
+      const now = performance.now();
+      if (now - lastMouseMove < 35) return;
+      lastMouseMove = now;
+      const bounds = remoteScreen.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) return;
+      sendRemoteInput({
+        type: 'MOVE',
+        x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)),
+        y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height))
+      });
+    });
+    remoteScreen.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      remoteScreen.focus();
+      remoteScreen.setPointerCapture(event.pointerId);
+      if (event.button === 0 || event.button === 2) {
+        sendRemoteInput({ type: 'MOUSE', action: 'down', button: event.button === 2 ? 2 : 1 });
+      }
+    });
+    remoteScreen.addEventListener('pointerup', (event) => {
+      if (event.button === 0 || event.button === 2) {
+        sendRemoteInput({ type: 'MOUSE', action: 'up', button: event.button === 2 ? 2 : 1 });
+      }
+    });
+    remoteScreen.addEventListener('contextmenu', (event) => event.preventDefault());
+    remoteScreen.addEventListener('wheel', (event) => {
+      event.preventDefault();
+      sendRemoteInput({ type: 'WHEEL', delta: Math.max(-1200, Math.min(1200, Math.round(-event.deltaY))) });
+    }, { passive: false });
+    const pressedRemoteKeys = new Set();
+    remoteScreen.addEventListener('keydown', (event) => {
+      if (event.keyCode > 0 && event.keyCode < 256) {
+        event.preventDefault();
+        pressedRemoteKeys.add(event.keyCode);
+        sendRemoteInput({ type: 'KEY', action: 'down', key: event.keyCode });
+      }
+    });
+    remoteScreen.addEventListener('keyup', (event) => {
+      if (event.keyCode > 0 && event.keyCode < 256) {
+        event.preventDefault();
+        pressedRemoteKeys.delete(event.keyCode);
+        sendRemoteInput({ type: 'KEY', action: 'up', key: event.keyCode });
+      }
+    });
+    window.addEventListener('blur', () => {
+      for (const key of pressedRemoteKeys) {
+        sendRemoteInput({ type: 'KEY', action: 'up', key });
+      }
+      pressedRemoteKeys.clear();
+    });
+
+    const events = new EventSource('/events');
+    events.onmessage = (event) => {
+      try {
+        renderData(JSON.parse(event.data));
+      } catch {
+        dataError.textContent = 'Received invalid live data from the server.';
+      }
+    };
+    events.onerror = () => {
+      dataError.textContent = 'Live connection interrupted. Reconnecting…';
+    };
+
+    request('/api/data').then(renderData).catch((error) => { dataError.textContent = error.message; });
+    refreshNode().catch((error) => { peerError.textContent = error.message; });
+    setInterval(() => refreshNode().catch((error) => { peerError.textContent = error.message; }), 5000);
+  </script>
+</body>
+</html>
