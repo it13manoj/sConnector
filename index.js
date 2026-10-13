@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const axios = require('axios');
@@ -11,7 +12,7 @@ const { createRemoteDesktop } = require('./remote-control');
 
 const CONFIG_FILE = path.join(__dirname, 'config.json');
 const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-const port = Number(process.env.PORT || config.port || 3000);
+const port = Number(process.env.PORT);
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error('PORT must be an integer between 1 and 65535.');
 }

@@ -3,221 +3,1176 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101827">
-  <title>SConnect — Local data sync</title>
+  <meta name="theme-color" content="#0a0f1d">
+  <title>SConnect — Local Peer Sync & Remote Desktop</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
       color-scheme: dark;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #101827;
-      color: #e7edf7;
-      font-synthesis: none;
-      text-rendering: optimizeLegibility;
-      --muted: #9aa9bd;
-      --line: #29364a;
-      --panel: #172235;
-      --blue: #78a9ff;
-      --green: #4bd39a;
-      --red: #ff8080;
+      --font-main: "Plus Jakarta Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      
+      --bg-base: #080c16;
+      --bg-surface: rgba(16, 24, 40, 0.72);
+      --bg-surface-elevated: rgba(23, 34, 56, 0.85);
+      --bg-input: rgba(10, 16, 28, 0.85);
+      
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(255, 255, 255, 0.16);
+      --border-focus: rgba(99, 102, 241, 0.5);
+      
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --primary-glow: rgba(99, 102, 241, 0.25);
+      
+      --emerald: #10b981;
+      --emerald-glow: rgba(16, 185, 129, 0.2);
+      --emerald-bg: rgba(16, 185, 129, 0.1);
+      
+      --amber: #f59e0b;
+      --amber-bg: rgba(245, 158, 11, 0.1);
+      --amber-border: rgba(245, 158, 11, 0.25);
+      
+      --rose: #f43f5e;
+      --rose-bg: rgba(244, 63, 94, 0.12);
+      
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 18px;
+      --radius-full: 9999px;
     }
-    * { box-sizing: border-box; }
-    body { margin: 0; min-width: 320px; }
-    main { width: min(100% - 36px, 1040px); margin: 48px auto; }
-    header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
-    h1, h2, p { margin-top: 0; }
-    h1 { margin-bottom: 8px; font-size: clamp(1.7rem, 4vw, 2.2rem); letter-spacing: -.04em; }
-    h2 { margin-bottom: 8px; font-size: 1rem; }
-    .subtitle, .hint { color: var(--muted); line-height: 1.55; }
-    .subtitle { margin-bottom: 0; }
-    .node-access { max-width: 48%; text-align: right; }
-    .node-badge { display: inline-block; padding: 9px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: .84rem; }
-    .node-badge::before { display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--green); content: ""; }
-    .address-info { margin: 8px 0 0; color: var(--muted); font-size: .8rem; line-height: 1.5; overflow-wrap: anywhere; }
-    .notice { padding: 12px 15px; margin-bottom: 22px; border: 1px solid #6c5930; border-radius: 10px; background: #30291c; color: #f1d99c; font-size: .9rem; line-height: 1.5; }
-    .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, .82fr); gap: 18px; align-items: start; }
-    .panel { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
-    .panel-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 18px; }
-    .count, .hint { color: var(--muted); font-size: .83rem; }
-    form { display: grid; gap: 10px; }
-    .peer-form { grid-template-columns: minmax(0, 1fr) auto; }
-    .remote-connect-form { grid-template-columns: minmax(0, 1fr) 130px auto; }
-    .record-form { margin-bottom: 20px; }
-    .record-fields { display: grid; grid-template-columns: .8fr 1.2fr; gap: 10px; }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: var(--font-main);
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      min-width: 320px;
+      line-height: 1.5;
+      position: relative;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+
+    /* Ambient background gradient lighting */
+    body::before {
+      content: "";
+      position: fixed;
+      top: -20%;
+      left: 15%;
+      width: 600px;
+      height: 600px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.12) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+      filter: blur(60px);
+    }
+    body::after {
+      content: "";
+      position: fixed;
+      top: 40%;
+      right: 10%;
+      width: 500px;
+      height: 500px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(16, 185, 129, 0.08) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+      filter: blur(80px);
+    }
+
+    main {
+      width: min(100% - 40px, 1160px);
+      margin: 40px auto 60px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Top Navbar / Header */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .brand-wrap {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .brand-logo {
+      width: 48px;
+      height: 48px;
+      border-radius: var(--radius-md);
+      background: linear-gradient(135deg, #6366f1, #06b6d4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      box-shadow: 0 0 24px rgba(99, 102, 241, 0.4);
+      flex-shrink: 0;
+    }
+
+    .brand-title {
+      font-size: 1.65rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      background: linear-gradient(120deg, #ffffff 40%, #a5b4fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: var(--radius-full);
+      background: rgba(99, 102, 241, 0.16);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      color: #c7d2fe;
+      -webkit-text-fill-color: #c7d2fe;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      margin-top: 2px;
+    }
+
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .live-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 14px;
+      border-radius: var(--radius-full);
+      background: var(--emerald-bg);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #6ee7b7;
+      font-size: 0.8rem;
+      font-weight: 600;
+      box-shadow: 0 0 16px rgba(16, 185, 129, 0.15);
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--emerald);
+      box-shadow: 0 0 8px var(--emerald);
+      animation: pulse-dot 2s infinite ease-in-out;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.85); }
+    }
+
+    /* Security Notice Banner */
+    .notice {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 18px;
+      margin-bottom: 24px;
+      border-radius: var(--radius-md);
+      background: linear-gradient(90deg, rgba(245, 158, 11, 0.08) 0%, rgba(245, 158, 11, 0.03) 100%);
+      border: 1px solid var(--amber-border);
+      color: #fde68a;
+      font-size: 0.86rem;
+      line-height: 1.5;
+    }
+
+    .notice-icon {
+      flex-shrink: 0;
+      color: var(--amber);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Bento Grid Layout */
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+      gap: 20px;
+      align-items: start;
+    }
+
+    /* Panel Card Design */
+    .panel {
+      position: relative;
+      background: var(--bg-surface);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .panel:hover {
+      border-color: var(--border-hover);
+    }
+
+    .panel-heading {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .panel-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .panel-icon-wrap {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(99, 102, 241, 0.12);
+      color: #818cf8;
+      border: 1px solid rgba(99, 102, 241, 0.2);
+    }
+
+    h2 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+    }
+
+    .count {
+      color: var(--text-dim);
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: var(--radius-full);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+    }
+
+    /* Forms & Inputs */
+    form {
+      display: grid;
+      gap: 12px;
+    }
+
+    .peer-form {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .remote-connect-form {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .record-form {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .record-fields {
+      display: grid;
+      grid-template-columns: 0.85fr 1.15fr;
+      gap: 12px;
+    }
+
+    .input-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-wrap .input-icon {
+      position: absolute;
+      left: 14px;
+      color: var(--text-dim);
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-wrap input {
+      padding-left: 40px;
+    }
+
     input, textarea {
-      width: 100%; min-width: 0; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px;
-      outline: none; background: #111b2b; color: #e7edf7; font: inherit;
+      width: 100%;
+      min-width: 0;
+      padding: 12px 14px;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      outline: none;
+      background: var(--bg-input);
+      color: var(--text-main);
+      font-family: inherit;
+      font-size: 0.88rem;
+      transition: all 0.2s ease;
     }
-    input:focus, textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px #78a9ff22; }
-    textarea { min-height: 42px; max-height: 160px; resize: vertical; }
-    button { padding: 10px 14px; border: 0; border-radius: 8px; background: #3978e8; color: white; font: inherit; font-weight: 650; cursor: pointer; }
-    button:hover { background: #4b87f0; }
-    button:disabled { opacity: .55; cursor: wait; }
-    button.secondary { padding: 7px 10px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-size: .82rem; }
-    button.secondary:hover { border-color: #52617a; color: white; }
-    .peer-list { display: grid; gap: 9px; margin-top: 16px; }
-    .peer { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 9px; }
-    .remote-requests { display: grid; gap: 10px; margin-top: 14px; }
-    .remote-request { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 13px; border: 1px solid #806b39; border-radius: 9px; background: #30291c; }
-    .remote-request-info { min-width: 0; overflow-wrap: anywhere; }
-    .remote-request-actions { display: flex; gap: 8px; flex: 0 0 auto; }
-    .remote-actions { display: flex; align-items: center; gap: 12px; margin: 12px 0; }
-    .remote-screen-wrap { display: none; padding: 8px; border: 1px solid var(--line); border-radius: 9px; background: #070b12; text-align: center; }
-    .remote-screen { display: block; width: auto; max-width: 100%; max-height: 70vh; margin: 0 auto; outline: none; cursor: crosshair; touch-action: none; }
-    body.remote-view-active { overflow: hidden; }
-    body.remote-view-active main { width: 100%; height: 100vh; margin: 0; }
-    body.remote-view-active main > :not(#remoteDesktopPanel) { display: none; }
-    body.remote-view-active #remoteDesktopPanel { display: flex; height: 100vh; flex-direction: column; padding: 12px; border: 0; border-radius: 0; }
-    body.remote-view-active #remoteDesktopPanel > :not(.remote-view-controls):not(.remote-screen-wrap) { display: none; }
-    body.remote-view-active .remote-view-controls { justify-content: flex-end; flex: 0 0 auto; margin: 0 0 8px; }
-    body.remote-view-active #remoteSessionStatus { margin-right: auto; }
-    body.remote-view-active .remote-screen-wrap { display: flex !important; flex: 1 1 auto; min-height: 0; align-items: center; justify-content: center; padding: 0; border: 0; }
-    body.remote-view-active .remote-screen { width: auto; max-width: 100%; max-height: 100%; }
-    #remoteDesktopPanel:fullscreen { display: flex; flex-direction: column; padding: 12px; border: 0; border-radius: 0; background: var(--panel); }
-    #remoteDesktopPanel:fullscreen .remote-screen-wrap { display: flex !important; flex: 1 1 auto; min-height: 0; align-items: center; justify-content: center; padding: 0; border: 0; }
-    #remoteDesktopPanel:fullscreen .remote-screen { max-height: 100%; }
-    .peer-address { overflow-wrap: anywhere; font: .88rem ui-monospace, SFMono-Regular, Consolas, monospace; }
-    .peer-state { margin-top: 5px; color: var(--muted); font-size: .78rem; }
-    .peer-state.online { color: var(--green); }
-    .peer-state.offline { color: var(--red); }
-    .empty { padding: 20px 12px; border: 1px dashed var(--line); border-radius: 9px; color: var(--muted); text-align: center; font-size: .88rem; }
-    .hint { margin: 10px 0 0; }
-    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 9px; }
-    table { width: 100%; border-collapse: collapse; text-align: left; }
-    th, td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
-    th { background: #111b2b; color: var(--muted); font-size: .78rem; font-weight: 600; }
-    td { font-size: .88rem; }
-    tr:last-child td { border-bottom: 0; }
-    .data-key { color: #a8c7ff; font: .85rem ui-monospace, SFMono-Regular, Consolas, monospace; overflow-wrap: anywhere; }
-    .data-value { max-width: 390px; white-space: pre-wrap; overflow-wrap: anywhere; }
-    .updated { color: var(--muted); white-space: nowrap; font-size: .8rem; }
-    .error { min-height: 20px; margin: 10px 0 0; color: var(--red); font-size: .86rem; }
-    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-    footer { margin-top: 20px; color: var(--muted); font-size: .8rem; }
-    @media (max-width: 760px) {
-      main { margin: 28px auto; }
-      header { flex-direction: column; gap: 14px; }
-      .node-access { max-width: 100%; text-align: left; }
+
+    input.mono-input, textarea.mono-input {
+      font-family: var(--font-mono);
+      font-size: 0.84rem;
+    }
+
+    input:focus, textarea:focus {
+      border-color: var(--primary);
+      background: rgba(14, 22, 38, 0.95);
+      box-shadow: 0 0 0 3px var(--primary-glow);
+    }
+
+    input::placeholder, textarea::placeholder {
+      color: var(--text-dim);
+    }
+
+    textarea {
+      min-height: 48px;
+      max-height: 160px;
+      resize: vertical;
+    }
+
+    /* Buttons */
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 11px 18px;
+      border: 0;
+      border-radius: var(--radius-md);
+      background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+      color: white;
+      font-family: inherit;
+      font-size: 0.86rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 14px var(--primary-glow);
+      white-space: nowrap;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px var(--primary-glow);
+      background: linear-gradient(135deg, #7174ff 0%, #5850ec 100%);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+
+    button.secondary {
+      padding: 7px 12px;
+      border: 1px solid var(--border-subtle);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      font-weight: 500;
+      box-shadow: none;
+    }
+
+    button.secondary:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: var(--border-hover);
+      color: #ffffff;
+      transform: translateY(-1px);
+    }
+
+    button.danger {
+      border: 1px solid rgba(244, 63, 94, 0.3);
+      background: var(--rose-bg);
+      color: #fda4af;
+      box-shadow: none;
+    }
+
+    button.danger:hover {
+      background: rgba(244, 63, 94, 0.2);
+      color: #ffffff;
+      border-color: var(--rose);
+    }
+
+    /* Peer List Cards */
+    .peer-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .peer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 13px 16px;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.02);
+      transition: all 0.2s ease;
+    }
+
+    .peer:hover {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: var(--border-hover);
+    }
+
+    .peer-details {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .peer-address {
+      overflow-wrap: anywhere;
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #cbd5e1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .peer-state {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-dim);
+      font-size: 0.76rem;
+    }
+
+    .peer-state.online {
+      color: #34d399;
+    }
+
+    .peer-state.offline {
+      color: #fb7185;
+    }
+
+    .peer-state-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    .peer-state.online .peer-state-dot {
+      box-shadow: 0 0 6px #34d399;
+    }
+
+    /* Empty States */
+    .empty {
+      padding: 28px 16px;
+      border: 1px dashed var(--border-subtle);
+      border-radius: var(--radius-md);
+      color: var(--text-dim);
+      text-align: center;
+      font-size: 0.86rem;
+      background: rgba(255, 255, 255, 0.01);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .empty-icon {
+      color: var(--text-dim);
+      opacity: 0.7;
+    }
+
+    .hint {
+      margin-top: 10px;
+      color: var(--text-dim);
+      font-size: 0.79rem;
+      line-height: 1.5;
+    }
+
+    .error {
+      min-height: 20px;
+      margin: 8px 0 0;
+      color: #fb7185;
+      font-size: 0.82rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Remote Desktop Section */
+    .remote-panel {
+      margin-top: 24px;
+    }
+
+    .remote-requests {
+      display: grid;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .remote-request {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 18px;
+      border: 1px solid var(--amber-border);
+      border-radius: var(--radius-md);
+      background: linear-gradient(90deg, rgba(245, 158, 11, 0.12) 0%, rgba(245, 158, 11, 0.05) 100%);
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.08);
+      animation: alert-pulse 2s infinite ease-in-out;
+    }
+
+    @keyframes alert-pulse {
+      0%, 100% { border-color: var(--amber-border); }
+      50% { border-color: rgba(245, 158, 11, 0.5); }
+    }
+
+    .remote-request-info strong {
+      display: block;
+      color: #fef3c7;
+      font-size: 0.94rem;
+      margin-bottom: 4px;
+    }
+
+    .remote-request-actions {
+      display: flex;
+      gap: 10px;
+      flex: 0 0 auto;
+    }
+
+    .remote-request-actions button:last-child {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      box-shadow: 0 4px 14px var(--emerald-glow);
+    }
+
+    .remote-status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 12px 16px;
+      margin: 14px 0;
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .remote-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 14px 0 6px;
+    }
+
+    .remote-screen-wrap {
+      display: none;
+      margin-top: 16px;
+      padding: 8px;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      background: #04070d;
+      text-align: center;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    }
+
+    .remote-screen {
+      display: block;
+      width: auto;
+      max-width: 100%;
+      max-height: 70vh;
+      margin: 0 auto;
+      outline: none;
+      cursor: crosshair;
+      touch-action: none;
+      border-radius: var(--radius-sm);
+    }
+
+    /* Active remote view overrides */
+    body.remote-view-active {
+      overflow: hidden;
+    }
+    body.remote-view-active main {
+      width: 100%;
+      height: 100vh;
+      margin: 0;
+    }
+    body.remote-view-active main > :not(#remoteDesktopPanel) {
+      display: none;
+    }
+    body.remote-view-active #remoteDesktopPanel {
+      display: flex;
+      height: 100vh;
+      flex-direction: column;
+      padding: 14px;
+      border: 0;
+      border-radius: 0;
+      background: #060911;
+    }
+    body.remote-view-active #remoteDesktopPanel > :not(.remote-view-controls):not(.remote-screen-wrap) {
+      display: none;
+    }
+    body.remote-view-active .remote-view-controls {
+      justify-content: flex-end;
+      flex: 0 0 auto;
+      margin: 0 0 10px;
+    }
+    body.remote-view-active #remoteSessionStatus {
+      margin-right: auto;
+      color: #a5b4fc;
+      font-weight: 600;
+    }
+    body.remote-view-active .remote-screen-wrap {
+      display: flex !important;
+      flex: 1 1 auto;
+      min-height: 0;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      border: 0;
+    }
+    body.remote-view-active .remote-screen {
+      width: auto;
+      max-width: 100%;
+      max-height: 100%;
+    }
+
+    #remoteDesktopPanel:fullscreen {
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      border: 0;
+      border-radius: 0;
+      background: #030509;
+    }
+    #remoteDesktopPanel:fullscreen .remote-screen-wrap {
+      display: flex !important;
+      flex: 1 1 auto;
+      min-height: 0;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      border: 0;
+    }
+    #remoteDesktopPanel:fullscreen .remote-screen {
+      max-height: 100%;
+    }
+
+    /* Shared Data Table Section */
+    .data-panel {
+      margin-top: 24px;
+    }
+
+    .data-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .data-search-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 320px;
+    }
+
+    .data-search-wrap input {
+      padding-left: 36px;
+      padding-top: 8px;
+      padding-bottom: 8px;
+      font-size: 0.82rem;
+    }
+
+    .data-search-wrap .search-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-dim);
+      pointer-events: none;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      background: rgba(10, 16, 28, 0.4);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th, td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      vertical-align: middle;
+    }
+
+    th {
+      background: rgba(17, 24, 39, 0.7);
+      color: var(--text-dim);
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    td {
+      font-size: 0.86rem;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.015);
+    }
+
+    .data-key-cell {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .data-key {
+      color: #93c5fd;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      font-weight: 600;
+      overflow-wrap: anywhere;
+      background: rgba(59, 130, 246, 0.1);
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+    }
+
+    .data-value {
+      max-width: 440px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      color: #e2e8f0;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      background: rgba(0, 0, 0, 0.25);
+      padding: 6px 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .updated {
+      color: var(--text-dim);
+      white-space: nowrap;
+      font-size: 0.78rem;
+    }
+
+    .table-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .icon-btn {
+      padding: 6px;
+      border-radius: var(--radius-sm);
+      color: var(--text-dim);
+      background: transparent;
+      border: 1px solid transparent;
+      box-shadow: none;
+    }
+
+    .icon-btn:hover {
+      color: var(--text-main);
+      background: rgba(255, 255, 255, 0.06);
+      border-color: var(--border-subtle);
+      transform: none;
+    }
+
+    .icon-btn.danger-btn:hover {
+      color: #fda4af;
+      background: var(--rose-bg);
+      border-color: rgba(244, 63, 94, 0.2);
+    }
+
+    footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 18px;
+      color: var(--text-dim);
+      font-size: 0.78rem;
+    }
+
+    footer code {
+      color: #a5b4fc;
+      background: rgba(99, 102, 241, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* Toast Notification */
+    .toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .toast {
+      padding: 10px 18px;
+      border-radius: var(--radius-md);
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-hover);
+      color: #f8fafc;
+      font-size: 0.84rem;
+      font-weight: 500;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transform: translateY(20px);
+      opacity: 0;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      pointer-events: auto;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 860px) {
+      main { margin: 24px auto 40px; }
+      header { flex-direction: column; align-items: flex-start; gap: 14px; }
       .layout { grid-template-columns: 1fr; }
     }
-    @media (max-width: 520px) {
-      main { width: min(100% - 24px, 1040px); }
-      .panel { padding: 15px; }
-      .peer-form, .record-fields { grid-template-columns: 1fr; }
-      .remote-connect-form { grid-template-columns: minmax(0, 1fr) 110px; }
-      .remote-request { align-items: stretch; flex-direction: column; }
+
+    @media (max-width: 580px) {
+      main { width: min(100% - 24px, 1160px); }
+      .panel { padding: 18px; }
+      .peer-form, .record-fields, .remote-connect-form { grid-template-columns: 1fr; }
+      .remote-request { flex-direction: column; align-items: stretch; }
       .remote-request-actions { justify-content: flex-end; }
-      .peer-form button, .record-form > button { width: 100%; }
-      .remote-connect-form button { width: 100%; grid-column: 1 / -1; }
-      th, td { padding: 10px 9px; }
+      .peer-form button, .record-form > button, .remote-connect-form button { width: 100%; }
+      th, td { padding: 10px 12px; }
+      .data-toolbar { flex-direction: column; align-items: stretch; }
+      .data-search-wrap { max-width: 100%; }
     }
   </style>
 </head>
 <body>
   <main>
+    <!-- Header -->
     <header>
-      <div>
-        <h1>SConnect</h1>
-        <p class="subtitle">Keep shared key/value data in sync across your systems.</p>
+      <div class="brand-wrap">
+        <div class="brand-logo" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="18" cy="5" r="3"></circle>
+            <circle cx="6" cy="12" r="3"></circle>
+            <circle cx="18" cy="19" r="3"></circle>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">
+            SConnect
+            <span class="brand-badge">P2P Sync</span>
+          </h1>
+          <p class="subtitle">Distributed real-time key/value store & consent-gated remote desktop</p>
+        </div>
       </div>
-      <div class="node-access">
-        <div class="node-badge" id="nodeInfo">Connecting…</div>
-        <p class="address-info" id="addressInfo"></p>
+      <div class="header-status">
+        <div class="live-indicator">
+          <span class="live-dot"></span>
+          <span>Live Sync Active</span>
+        </div>
       </div>
     </header>
 
+    <!-- Notice -->
     <aside class="notice">
-      Only trusted local-network or VPN devices should connect: anyone who can reach this app can read,
-      change, or delete its shared data. Restrict access with your firewall.
+      <div class="notice-icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+      </div>
+      <div>
+        <strong>Local Security Scope:</strong> Restrict traffic to trusted LAN / VPN devices only. Anyone reachable on this port can read and synchronize shared data. Protect access using host firewalls.
+      </div>
     </aside>
 
+    <!-- Bento Grid (Peers & Share) -->
     <div class="layout">
+      <!-- Connected Systems -->
       <section class="panel" aria-labelledby="peersTitle">
         <div class="panel-heading">
-          <div>
+          <div class="panel-title-wrap">
+            <div class="panel-icon-wrap" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                <line x1="6" y1="18" x2="6.01" y2="18"></line>
+              </svg>
+            </div>
             <h2 id="peersTitle">Connected systems</h2>
-            <span class="count" id="peerCount">No systems connected</span>
           </div>
+          <span class="count" id="peerCount">No systems connected</span>
         </div>
+
         <form class="peer-form" id="peerForm">
-          <input id="peerAddress" name="address" placeholder="172.30.115.249" aria-label="Peer IP address and optional port" autocomplete="off" required>
-          <button type="submit">Connect system</button>
+          <div class="input-wrap">
+            <span class="input-icon" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+              </svg>
+            </span>
+            <input id="peerAddress" class="mono-input" name="address" placeholder="e.g. 172.30.115.249 or 192.168.1.15:7000" aria-label="Peer IP address and optional port" autocomplete="off" required>
+          </div>
+          <button type="submit">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Connect
+          </button>
         </form>
-        <p class="hint">Enter the other system's IP only. Port 3000 is used by default; add :port if that system uses a different port. Add each other's IP on both systems if you want both dashboards to list the connection.</p>
+        <p class="hint">Enter peer IP address. Port 3000 is used by default; append <code>:port</code> if non-standard. Configure reciprocally for two-way sync.</p>
         <p class="error" id="peerError" role="alert"></p>
         <div class="peer-list" id="peerList"></div>
       </section>
 
+      <!-- Share Record -->
       <section class="panel" aria-labelledby="shareTitle">
         <div class="panel-heading">
-          <div>
-            <h2 id="shareTitle">Share a value</h2>
-            <span class="count">Changes sync automatically</span>
+          <div class="panel-title-wrap">
+            <div class="panel-icon-wrap" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="17 8 12 3 7 8"></polyline>
+                <line x1="12" y1="3" x2="12" y2="15"></line>
+              </svg>
+            </div>
+            <h2 id="shareTitle">Broadcast value</h2>
           </div>
+          <span class="count">Auto-synced</span>
         </div>
+
         <form class="record-form" id="recordForm">
           <div class="record-fields">
-            <input id="dataKey" name="key" placeholder="Key (e.g. project)" maxlength="200" required>
-            <textarea id="dataValue" name="value" placeholder="Value to share" required></textarea>
+            <input id="dataKey" class="mono-input" name="key" placeholder="Key identifier (e.g. env_config)" maxlength="200" required>
+            <textarea id="dataValue" class="mono-input" name="value" placeholder="Payload value or JSON object..." required></textarea>
           </div>
-          <button type="submit">Add or update</button>
+          <button type="submit">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+              <polyline points="17 21 17 13 7 13 7 21"></polyline>
+              <polyline points="7 3 7 8 15 8"></polyline>
+            </svg>
+            Store & Propagate
+          </button>
           <p class="error" id="dataError" role="alert"></p>
         </form>
       </section>
     </div>
 
-    <section class="panel" id="remoteDesktopPanel" style="margin-top:18px" aria-labelledby="remoteTitle">
+    <!-- Remote Desktop Panel -->
+    <section class="panel remote-panel" id="remoteDesktopPanel" aria-labelledby="remoteTitle">
       <div class="panel-heading">
-        <div>
+        <div class="panel-title-wrap">
+          <div class="panel-icon-wrap" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+          </div>
           <h2 id="remoteTitle">Consent-based remote desktop</h2>
-          <span class="count">The remote user must accept before screen or input access starts</span>
         </div>
+        <span class="count">Two-way authorization</span>
       </div>
-      <p class="hint">Both systems must be Windows PCs running this project on the same trusted LAN or VPN. Keep this portal open on the remote PC so its user can review and accept or deny each request. Screen, keyboard, and mouse access ends when either side disconnects or the remote user revokes it.</p>
+
+      <p class="hint">Both Windows systems must run SConnect on the same private network or VPN. The host user must approve screen and input interaction.</p>
+      
       <div class="remote-requests" id="remoteRequests" aria-live="polite"></div>
-      <p class="hint" id="remoteHostStatus">Connecting to the local consent monitor…</p>
-      <div class="remote-actions">
-        <span class="hint" id="hostSessionStatus">No incoming remote session.</span>
-        <button class="secondary" id="revokeRemoteSession" type="button" hidden>Revoke access</button>
+      
+      <div class="remote-status-bar">
+        <div>
+          <span class="hint" id="remoteHostStatus">Connecting consent monitor…</span>
+          <div style="margin-top: 4px; font-weight: 500; font-size: 0.84rem; color: #cbd5e1;" id="hostSessionStatus">No incoming remote session.</div>
+        </div>
+        <button class="secondary danger" id="revokeRemoteSession" type="button" hidden>Revoke access</button>
       </div>
+
       <form class="remote-connect-form" id="remoteConnectForm">
-        <input id="remoteAddress" name="address" placeholder="172.30.115.249" aria-label="Remote system IP address" autocomplete="off" required>
-        <button type="submit">Request access</button>
+        <div class="input-wrap">
+          <span class="input-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+          </span>
+          <input id="remoteAddress" class="mono-input" name="address" placeholder="Remote system IP address (e.g. 172.30.115.249)" aria-label="Remote system IP address" autocomplete="off" required>
+        </div>
+        <button type="submit">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          Request access
+        </button>
       </form>
-      <p class="hint">Enter only the remote system's private LAN or VPN IP. SConnect uses the same port as this portal (normally 3000), so both systems should use the same SConnect port.</p>
+      
       <p class="error" id="remoteError" role="alert"></p>
+
       <div class="remote-actions remote-view-controls">
-        <span class="hint" id="remoteSessionStatus">No remote session.</span>
-        <button class="secondary" id="endRemoteSession" type="button" hidden>End session</button>
-        <button class="secondary" id="fullscreenRemoteSession" type="button" hidden>Full screen</button>
+        <span class="hint" id="remoteSessionStatus">No active remote session.</span>
+        <button class="secondary danger" id="endRemoteSession" type="button" hidden>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+          End session
+        </button>
+        <button class="secondary" id="fullscreenRemoteSession" type="button" hidden>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 3 21 3 21 9"></polyline>
+            <polyline points="9 21 3 21 3 15"></polyline>
+            <line x1="21" y1="3" x2="14" y2="10"></line>
+            <line x1="3" y1="21" x2="10" y2="14"></line>
+          </svg>
+          Full screen
+        </button>
       </div>
+
       <div class="remote-screen-wrap" id="remoteScreenWrap">
-        <img class="remote-screen" id="remoteScreen" alt="Remote desktop. Focus this screen to send keyboard input." tabindex="0" draggable="false">
+        <img class="remote-screen" id="remoteScreen" alt="Remote desktop. Focus to route mouse and keyboard." tabindex="0" draggable="false">
       </div>
     </section>
 
-    <section class="panel" style="margin-top:18px" aria-labelledby="dataTitle">
+    <!-- Shared Data Store -->
+    <section class="panel data-panel" aria-labelledby="dataTitle">
       <div class="panel-heading">
-        <div>
-          <h2 id="dataTitle">Shared data</h2>
-          <span class="count" id="dataCount">0 items</span>
+        <div class="panel-title-wrap">
+          <div class="panel-icon-wrap" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+              <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+              <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+            </svg>
+          </div>
+          <h2 id="dataTitle">Shared synchronized data</h2>
+        </div>
+        <span class="count" id="dataCount">0 items</span>
+      </div>
+
+      <div class="data-toolbar">
+        <div class="data-search-wrap">
+          <span class="search-icon" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </span>
+          <input type="search" id="dataSearch" placeholder="Filter by key or value..." aria-label="Filter shared keys and values">
         </div>
       </div>
+
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Key</th><th>Value</th><th>Updated</th><th><span class="sr-only">Actions</span></th></tr></thead>
+          <thead>
+            <tr>
+              <th style="width: 28%;">Key</th>
+              <th style="width: 44%;">Value</th>
+              <th style="width: 18%;">Updated</th>
+              <th style="width: 10%; text-align: right;"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
           <tbody id="dataBody"></tbody>
         </table>
       </div>
-      <footer>Data is stored locally in <code>data.json</code> and synchronized with configured peers.</footer>
+      <footer>
+        <span>Local persistence in <code>data.json</code> • Peer updates delivered via SSE stream</span>
+      </footer>
     </section>
   </main>
 
+  <!-- Lightweight Toast Container -->
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
   <script>
-    const nodeInfo = document.getElementById('nodeInfo');
-    const addressInfo = document.getElementById('addressInfo');
     const peerList = document.getElementById('peerList');
     const peerCount = document.getElementById('peerCount');
     const dataBody = document.getElementById('dataBody');
+    const dataCount = document.getElementById('dataCount');
+    const dataSearch = document.getElementById('dataSearch');
     const peerError = document.getElementById('peerError');
     const dataError = document.getElementById('dataError');
     const remoteError = document.getElementById('remoteError');
@@ -229,14 +1184,30 @@
     const remoteScreenWrap = document.getElementById('remoteScreenWrap');
     const fullscreenRemoteSession = document.getElementById('fullscreenRemoteSession');
     const remoteDesktopPanel = document.getElementById('remoteDesktopPanel');
+    const toastContainer = document.getElementById('toastContainer');
+
     let nodeId = 'SConnect system';
     let requesterSocket = null;
     let hostedSessionId = null;
     let consentSocket = null;
     let consentReconnectDelay = 1000;
+    let currentStore = {};
+
+    function showToast(message, type = 'info') {
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.textContent = message;
+      toastContainer.appendChild(toast);
+      requestAnimationFrame(() => toast.classList.add('show'));
+      setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 250);
+      }, 3000);
+    }
+
     function apiConnectionHint(url, status) {
       const requestUrl = new URL(url, location.href);
-      return `This page is open at ${location.origin}, but that address is not serving the SConnect API for ${requestUrl.pathname} (HTTP ${status}). Start SConnect from its project folder with npm start, then open the exact address printed in its terminal. If port 3000 is used by another app, start SConnect with $env:PORT='3001'; npm start and use the printed port. Do not use Live Server or open the HTML file directly.`;
+      return `This page is open at ${location.origin}, but that address is not serving the SConnect API for ${requestUrl.pathname} (HTTP ${status}). Start SConnect from its project folder with npm start.`;
     }
 
     async function request(url, options) {
@@ -262,60 +1233,146 @@
       return node;
     }
 
-    function renderData({ data }) {
-      const entries = Object.entries(data || {}).sort(([a], [b]) => a.localeCompare(b));
-      document.getElementById('dataCount').textContent = `${entries.length} ${entries.length === 1 ? 'item' : 'items'}`;
+    function renderData(payload) {
+      currentStore = payload?.data || {};
+      renderFilteredData();
+    }
+
+    function renderFilteredData() {
+      const query = (dataSearch?.value || '').trim().toLowerCase();
+      const entries = Object.entries(currentStore).sort(([a], [b]) => a.localeCompare(b));
+      
+      const filtered = query
+        ? entries.filter(([key, item]) => {
+            const valStr = typeof item.value === 'string' ? item.value : JSON.stringify(item.value);
+            return key.toLowerCase().includes(query) || (valStr && valStr.toLowerCase().includes(query));
+          })
+        : entries;
+
+      dataCount.textContent = `${entries.length} ${entries.length === 1 ? 'item' : 'items'}`;
       dataBody.replaceChildren();
 
-      if (!entries.length) {
+      if (!filtered.length) {
         const row = dataBody.insertRow();
         const cell = row.insertCell();
         cell.colSpan = 4;
         cell.className = 'empty';
-        cell.textContent = 'No shared data yet. Add a value above to get started.';
+        cell.innerHTML = `
+          <svg class="empty-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="8" y1="12" x2="16" y2="12"></line>
+          </svg>
+          <span>${query ? 'No records match your filter query.' : 'No shared records yet. Use the form above to broadcast values.'}</span>
+        `;
         return;
       }
 
-      for (const [key, item] of entries) {
+      for (const [key, item] of filtered) {
         const row = dataBody.insertRow();
-        row.insertCell().append(element('span', 'data-key', key));
+        
+        // Key cell
+        const keyCell = row.insertCell();
+        const keyWrap = element('div', 'data-key-cell');
+        keyWrap.append(element('span', 'data-key', key));
+        keyCell.append(keyWrap);
+
+        // Value cell
+        const valCell = row.insertCell();
         const value = item.value;
         const printable = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-        row.insertCell().append(element('div', 'data-value', printable ?? 'null'));
-        row.insertCell().append(element('span', 'updated', new Date(item.updatedAt).toLocaleString()));
+        valCell.append(element('div', 'data-value', printable ?? 'null'));
+
+        // Updated time cell
+        const timeCell = row.insertCell();
+        timeCell.append(element('span', 'updated', new Date(item.updatedAt).toLocaleString()));
+
+        // Actions cell
         const actionCell = row.insertCell();
-        const remove = element('button', 'secondary', 'Delete');
+        const actionsWrap = element('div', 'table-actions');
+
+        // Copy button
+        const copyBtn = element('button', 'icon-btn');
+        copyBtn.type = 'button';
+        copyBtn.title = 'Copy value';
+        copyBtn.innerHTML = `
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+        `;
+        copyBtn.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(printable);
+            showToast(`Copied value for "${key}"`);
+          } catch {
+            showToast('Unable to copy to clipboard', 'error');
+          }
+        });
+
+        // Delete button
+        const remove = element('button', 'icon-btn danger-btn');
         remove.type = 'button';
         remove.setAttribute('aria-label', `Delete ${key}`);
+        remove.title = `Delete ${key}`;
+        remove.innerHTML = `
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+        `;
         remove.addEventListener('click', () => deleteData(key));
-        actionCell.append(remove);
+        
+        actionsWrap.append(copyBtn, remove);
+        actionCell.append(actionsWrap);
       }
     }
+
+    dataSearch?.addEventListener('input', renderFilteredData);
 
     function renderPeers(peers) {
       peerList.replaceChildren();
       peerCount.textContent = peers.length
-        ? `${peers.length} ${peers.length === 1 ? 'system' : 'systems'} configured`
+        ? `${peers.length} ${peers.length === 1 ? 'system' : 'systems'} active`
         : 'No systems connected';
 
       if (!peers.length) {
-        peerList.append(element('div', 'empty', 'Add another SConnect system to start sharing data.'));
+        const empty = element('div', 'empty');
+        empty.innerHTML = `
+          <svg class="empty-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+            <line x1="6" y1="6" x2="6.01" y2="6"></line>
+            <line x1="6" y1="18" x2="6.01" y2="18"></line>
+          </svg>
+          <span>No peer systems connected yet. Enter an IP above to connect.</span>
+        `;
+        peerList.append(empty);
         return;
       }
 
       for (const peer of peers) {
         const card = element('div', 'peer');
-        const details = element('div');
-        details.append(element('div', 'peer-address', peer.address));
+        const details = element('div', 'peer-details');
+        
+        const addrSpan = element('div', 'peer-address', peer.address);
+        details.append(addrSpan);
+
+        const statusWrap = element('div', `peer-state ${peer.status}`);
+        statusWrap.append(element('span', 'peer-state-dot'));
+
         const statusText = peer.status === 'online'
-          ? `Online${peer.lastSeen ? ` · synced ${new Date(peer.lastSeen).toLocaleTimeString()}` : ''}`
+          ? `Online${peer.lastSeen ? ` • synced ${new Date(peer.lastSeen).toLocaleTimeString()}` : ''}`
           : peer.status === 'offline'
-            ? `Offline · ${peer.error || 'will retry automatically'}`
+            ? `Offline • ${peer.error || 'reconnecting automatically'}`
             : 'Checking connection…';
-        details.append(element('div', `peer-state ${peer.status}`, statusText));
-        const remove = element('button', 'secondary', 'Remove');
+            
+        statusWrap.append(document.createTextNode(statusText));
+        details.append(statusWrap);
+
+        const remove = element('button', 'secondary danger', 'Disconnect');
         remove.type = 'button';
         remove.addEventListener('click', () => removePeer(peer.address));
+        
         card.append(details, remove);
         peerList.append(card);
       }
@@ -324,8 +1381,6 @@
     async function refreshNode() {
       const node = await request('/api/node');
       nodeId = node.nodeId;
-      nodeInfo.textContent = `${node.nodeId} · port ${node.port}`;
-      addressInfo.textContent = `This system: ${(node.addresses || []).map((address) => `http://${address.includes(':') ? `[${address}]` : address}:${node.port}`).join(' · ')}`;
       renderPeers(node.peers);
     }
 
@@ -343,6 +1398,7 @@
         });
         renderPeers(result.peers);
         document.getElementById('peerAddress').value = '';
+        showToast(`Connected peer system: ${address}`);
         await refreshNode();
       } catch (error) {
         peerError.textContent = error.message;
@@ -366,6 +1422,7 @@
         });
         document.getElementById('dataKey').value = '';
         document.getElementById('dataValue').value = '';
+        showToast(`Stored & broadcasted "${key}"`);
       } catch (error) {
         dataError.textContent = error.message;
       } finally {
@@ -382,6 +1439,7 @@
           body: JSON.stringify({ address })
         });
         renderPeers(result.peers);
+        showToast(`Disconnected peer: ${address}`);
       } catch (error) {
         peerError.textContent = error.message;
       }
@@ -391,6 +1449,7 @@
       dataError.textContent = '';
       try {
         await request(`/api/data/${encodeURIComponent(key)}`, { method: 'DELETE' });
+        showToast(`Deleted key "${key}"`);
       } catch (error) {
         dataError.textContent = error.message;
       }
@@ -420,10 +1479,10 @@
       const info = element('div', 'remote-request-info');
       info.append(
         element('strong', '', `${packet.requesterName || 'Remote system'} is requesting desktop access`),
-        element('div', 'peer-state', `Source IP: ${packet.requesterAddress || 'unknown'}. Accepting shares this PC’s screen and allows remote mouse and keyboard input until the session ends.`)
+        element('div', 'hint', `Source IP: ${packet.requesterAddress || 'unknown'}. Authorizing shares screen view, keyboard, and mouse control.`)
       );
       const actions = element('div', 'remote-request-actions');
-      const decline = element('button', 'secondary', 'Decline');
+      const decline = element('button', 'secondary danger', 'Decline');
       decline.type = 'button';
       decline.addEventListener('click', () => {
         sendConsentMessage({ type: 'DENY', sessionId: packet.sessionId });
@@ -435,7 +1494,7 @@
         accept.disabled = true;
         decline.disabled = true;
         sendConsentMessage({ type: 'APPROVE', sessionId: packet.sessionId });
-        hostSessionStatus.textContent = 'Starting the approved remote desktop session…';
+        hostSessionStatus.textContent = 'Starting authorized desktop stream…';
       });
       actions.append(decline, accept);
       card.append(info, actions);
@@ -461,13 +1520,13 @@
         try {
           packet = JSON.parse(event.data);
         } catch {
-          remoteHostStatus.textContent = 'Received an invalid consent message.';
+          remoteHostStatus.textContent = 'Received invalid consent message.';
           return;
         }
 
         if (packet.type === 'READY') {
           consentReconnectDelay = 1000;
-          remoteHostStatus.textContent = 'This PC is ready to receive consent-gated requests while this portal stays open.';
+          remoteHostStatus.textContent = 'Ready for consent-gated requests while this tab remains open.';
         } else if (packet.type === 'REQUEST') {
           const existingCard = document.querySelector(`[data-session-id="${CSS.escape(packet.sessionId)}"]`);
           if (!existingCard) {
@@ -478,7 +1537,7 @@
         } else if (packet.type === 'SESSION_STARTED') {
           hostedSessionId = packet.sessionId;
           document.querySelector(`[data-session-id="${CSS.escape(packet.sessionId)}"]`)?.remove();
-          hostSessionStatus.textContent = `Remote desktop active with ${packet.requesterName || 'remote system'} (${packet.requesterAddress || 'unknown IP'}).`;
+          hostSessionStatus.textContent = `Remote session active with ${packet.requesterName || 'remote client'} (${packet.requesterAddress || 'IP'}).`;
           revokeRemoteSession.hidden = false;
           revokeRemoteSession.disabled = false;
         } else if (packet.type === 'SESSION_ENDED') {
@@ -490,8 +1549,8 @@
       socket.addEventListener('close', () => {
         if (consentSocket !== socket) return;
         consentSocket = null;
-        remoteHostStatus.textContent = 'Consent monitor disconnected. Reconnecting automatically…';
-        clearHostedSession('Remote session stopped because the local portal disconnected.');
+        remoteHostStatus.textContent = 'Consent monitor disconnected. Auto-reconnecting…';
+        clearHostedSession('Remote session ended because local portal disconnected.');
         setTimeout(() => {
           connectConsentMonitor();
         }, consentReconnectDelay);
@@ -499,7 +1558,7 @@
       });
       socket.addEventListener('error', () => {
         if (consentSocket === socket) {
-          remoteHostStatus.textContent = 'Could not connect the consent monitor. Reconnecting automatically…';
+          remoteHostStatus.textContent = 'Could not connect consent monitor. Reconnecting…';
         }
       });
     }
@@ -533,7 +1592,7 @@
       remoteScreenWrap.style.display = 'none';
       remoteScreen.removeAttribute('src');
       document.getElementById('endRemoteSession').hidden = true;
-      remoteSessionStatus.textContent = reason || 'No remote session.';
+      remoteSessionStatus.textContent = reason || 'No active remote session.';
     }
 
     document.getElementById('remoteConnectForm').addEventListener('submit', (event) => {
@@ -543,7 +1602,7 @@
 
       const address = document.getElementById('remoteAddress').value.trim().replace(/^\[|\]$/g, '');
       if (!isPrivateAddress(address)) {
-        remoteError.textContent = 'Enter a private LAN or VPN IP address, such as 172.30.115.249. Public IP addresses are not allowed.';
+        remoteError.textContent = 'Enter a private LAN or VPN IP address (e.g. 172.30.115.249). Public IPs are restricted.';
         return;
       }
 
@@ -553,6 +1612,7 @@
       requesterSocket = socket;
       let closeReason = 'Remote connection closed.';
       remoteSessionStatus.textContent = `Connecting to ${address}…`;
+      
       socket.addEventListener('open', () => {
         socket.send(JSON.stringify({ type: 'REQUEST', requesterName: nodeId }));
       });
@@ -561,14 +1621,14 @@
         try {
           packet = JSON.parse(messageEvent.data);
         } catch {
-          remoteSessionStatus.textContent = 'The remote system returned an invalid response.';
+          remoteSessionStatus.textContent = 'The remote host returned an invalid response.';
           return;
         }
         if (packet.type === 'PENDING') {
-          remoteSessionStatus.textContent = 'Request sent. Waiting for the person at the remote PC to accept…';
+          remoteSessionStatus.textContent = 'Request sent. Waiting for remote user authorization…';
           document.getElementById('endRemoteSession').hidden = false;
         } else if (packet.type === 'APPROVED') {
-          remoteSessionStatus.textContent = 'Access accepted. You can now control the remote desktop below.';
+          remoteSessionStatus.textContent = 'Access authorized. Interacting with remote desktop below.';
           document.body.classList.add('remote-view-active');
           remoteScreenWrap.style.display = 'block';
           document.getElementById('endRemoteSession').hidden = false;
@@ -578,7 +1638,7 @@
           remoteScreen.src = `data:image/jpeg;base64,${packet.image}`;
           remoteScreenWrap.style.display = 'block';
         } else if (packet.type === 'DENIED') {
-          closeReason = packet.reason || 'The remote user declined the request.';
+          closeReason = packet.reason || 'The remote user declined access.';
           remoteSessionStatus.textContent = closeReason;
           document.getElementById('endRemoteSession').hidden = true;
         } else if (packet.type === 'SESSION_ENDED') {
@@ -589,7 +1649,7 @@
         }
       });
       socket.addEventListener('error', () => {
-        closeReason = 'Could not connect to the remote system. Check that SConnect is running, the IP and port are correct, and the firewall allows the VPN/LAN connection.';
+        closeReason = 'Could not reach remote system. Ensure SConnect is running and firewall permissions are granted.';
         remoteSessionStatus.textContent = closeReason;
       });
       socket.addEventListener('close', () => {
@@ -612,9 +1672,10 @@
           ? 'Exit full screen'
           : 'Full screen';
       } catch (error) {
-        remoteError.textContent = `Could not change fullscreen mode: ${error.message}`;
+        remoteError.textContent = `Could not toggle fullscreen: ${error.message}`;
       }
     });
+
     document.addEventListener('fullscreenchange', () => {
       fullscreenRemoteSession.textContent = document.fullscreenElement === remoteDesktopPanel
         ? 'Exit full screen'
@@ -640,6 +1701,7 @@
         y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height))
       });
     });
+
     remoteScreen.addEventListener('pointerdown', (event) => {
       event.preventDefault();
       remoteScreen.focus();
@@ -648,16 +1710,20 @@
         sendRemoteInput({ type: 'MOUSE', action: 'down', button: event.button === 2 ? 2 : 1 });
       }
     });
+
     remoteScreen.addEventListener('pointerup', (event) => {
       if (event.button === 0 || event.button === 2) {
         sendRemoteInput({ type: 'MOUSE', action: 'up', button: event.button === 2 ? 2 : 1 });
       }
     });
+
     remoteScreen.addEventListener('contextmenu', (event) => event.preventDefault());
+
     remoteScreen.addEventListener('wheel', (event) => {
       event.preventDefault();
       sendRemoteInput({ type: 'WHEEL', delta: Math.max(-1200, Math.min(1200, Math.round(-event.deltaY))) });
     }, { passive: false });
+
     const pressedRemoteKeys = new Set();
     remoteScreen.addEventListener('keydown', (event) => {
       if (event.keyCode > 0 && event.keyCode < 256) {
@@ -666,6 +1732,7 @@
         sendRemoteInput({ type: 'KEY', action: 'down', key: event.keyCode });
       }
     });
+
     remoteScreen.addEventListener('keyup', (event) => {
       if (event.keyCode > 0 && event.keyCode < 256) {
         event.preventDefault();
@@ -673,6 +1740,7 @@
         sendRemoteInput({ type: 'KEY', action: 'up', key: event.keyCode });
       }
     });
+
     window.addEventListener('blur', () => {
       for (const key of pressedRemoteKeys) {
         sendRemoteInput({ type: 'KEY', action: 'up', key });
@@ -685,11 +1753,11 @@
       try {
         renderData(JSON.parse(event.data));
       } catch {
-        dataError.textContent = 'Received invalid live data from the server.';
+        dataError.textContent = 'Received invalid live data stream.';
       }
     };
     events.onerror = () => {
-      dataError.textContent = 'Live connection interrupted. Reconnecting…';
+      dataError.textContent = 'Live data stream interrupted. Auto-reconnecting…';
     };
 
     request('/api/data').then(renderData).catch((error) => { dataError.textContent = error.message; });
