@@ -16,7 +16,7 @@ const port = Number(process.env.PORT);
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error('PORT must be an integer between 1 and 65535.');
 }
-const bindAddresses = getBindAddresses();
+const reachableAddresses = getReachableAddresses();
 config.peers = Array.isArray(config.peers) ? config.peers : [];
 if (!config.nodeId) {
   config.nodeId = `node-${os.hostname()}-${crypto.randomUUID().slice(0, 8)}`;
@@ -50,22 +50,21 @@ function isPrivateAddress(address) {
     octets[0] === 127;
 }
 
-function getBindAddresses() {
-  if (process.env.HOST) {
-    return [process.env.HOST.trim()];
-  }
-  if (process.env.BIND_ADDRESSES) {
-    const addresses = [...new Set(process.env.BIND_ADDRESSES.split(',').map((value) => value.trim()).filter(Boolean))];
-    if (addresses.length) return addresses;
-  }
+function isLinkLocal(ip) {
+  return typeof ip === 'string' && /^fe[89ab]/i.test(ip);
+}
 
+function getReachableAddresses() {
   const addresses = new Set();
   for (const entries of Object.values(os.networkInterfaces())) {
     for (const entry of entries || []) {
-      if (isIP(entry.address)) addresses.add(entry.address);
+      if (entry && entry.address && isIP(entry.address)) {
+        if (isLinkLocal(entry.address)) continue;
+        addresses.add(entry.address);
+      }
     }
   }
-  if (!addresses.size) addresses.add('0.0.0.0');
+  if (!addresses.size) addresses.add('127.0.0.1');
   return [...addresses];
 }
 
@@ -256,7 +255,7 @@ app.get('/api/node', (req, res) => {
   res.json({
     nodeId: config.nodeId,
     port,
-    addresses: bindAddresses,
+    addresses: reachableAddresses,
     peers: publicPeers()
   });
 });
@@ -313,34 +312,36 @@ function listenOnAddress(address) {
   return new Promise((resolve, reject) => {
     const server = http.createServer(app);
     remoteDesktop.attach(server);
-    const onError = (error) => {
-      server.removeListener('listening', onListening);
+    server.once('error', (error) => {
+      console.error(`[HTTP] Could not listen on ${address}:${port}:`, error.message);
       reject(error);
-    };
-    const onListening = () => {
-      server.removeListener('error', onError);
-      server.on('error', (error) => console.error(`[HTTP] Listener ${address} failed:`, error));
-      resolve();
-    };
-
-    server.once('error', onError);
-    server.once('listening', onListening);
-    server.listen(port, address);
+    });
+    server.listen(port, address, () => {
+      const host = address.includes(':') ? `[${address}]` : address;
+      console.log(`${config.nodeId} listening on http://${host}:${port}`);
+      resolve(server);
+    });
   });
 }
 
 async function start() {
-  const results = await Promise.allSettled(bindAddresses.map(listenOnAddress));
-  const listening = results.filter((result) => result.status === 'fulfilled').length;
-  results.forEach((result, index) => {
-    if (result.status === 'fulfilled') {
-      const host = bindAddresses[index].includes(':') ? `[${bindAddresses[index]}]` : bindAddresses[index];
-      console.log(`${config.nodeId} listening on http://${host}:${port}`);
-    } else {
-      console.error(`[HTTP] Could not listen on ${bindAddresses[index]}:${port}: ${result.reason.message}`);
-    }
-  });
-  if (!listening) throw new Error('SConnect could not listen on any configured network address.');
+  if (process.env.HOST) {
+    await listenOnAddress(process.env.HOST.trim());
+  } else if (process.env.BIND_ADDRESSES) {
+    const addresses = [...new Set(process.env.BIND_ADDRESSES.split(',').map((v) => v.trim()).filter(Boolean))]
+      .filter((addr) => isIP(addr) && !isLinkLocal(addr));
+    if (!addresses.length) addresses.push('0.0.0.0');
+    const results = await Promise.allSettled(addresses.map(listenOnAddress));
+    const listening = results.filter((r) => r.status === 'fulfilled').length;
+    if (!listening) throw new Error('SConnect could not listen on any configured network address.');
+  } else {
+    // Default: bind to 0.0.0.0 to safely accept connections on all interfaces
+    await listenOnAddress('0.0.0.0');
+    reachableAddresses.forEach((addr) => {
+      const host = addr.includes(':') ? `[${addr}]` : addr;
+      console.log(`  -> Reachable at http://${host}:${port}`);
+    });
+  }
 
   console.log(`Syncing with ${config.peers.length} configured peer(s).`);
   void syncAllPeers();
