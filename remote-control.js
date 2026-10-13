@@ -215,13 +215,6 @@ function createRemoteDesktop(nodeId) {
 
       if (!role) {
         if (packet.type === 'WATCH') {
-          const remoteAddress = normalizeAddress(request.socket.remoteAddress);
-          const localAddress = normalizeAddress(request.socket.localAddress);
-          if (remoteAddress !== localAddress) {
-            send(socket, { type: 'ERROR', message: 'The consent portal must connect locally on the remote PC.' });
-            socket.close(1008, 'Consent monitor must be local');
-            return;
-          }
           clearTimeout(handshakeTimeout);
           role = 'watcher';
           watchers.add(socket);
@@ -254,7 +247,7 @@ function createRemoteDesktop(nodeId) {
             return;
           }
           const id = require('crypto').randomUUID();
-          const remoteAddress = request.socket.remoteAddress || 'unknown';
+          const remoteAddress = request.headers['x-forwarded-for']?.split(',')[0].trim() || request.socket.remoteAddress || 'unknown';
           const entry = {
             id,
             socket,

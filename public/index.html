@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0a0f1d">
-  <title>SConnect — Local Peer Sync & Remote Desktop</title>
+  <title>SConnect — Parakshtech Sync & Remote Desktop</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -1027,7 +1027,7 @@
                 <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
               </svg>
             </span>
-            <input id="peerAddress" class="mono-input" name="address" placeholder="e.g. 172.30.115.249 or 192.168.1.15:7000" aria-label="Peer IP address and optional port" autocomplete="off" required>
+            <input id="peerAddress" class="mono-input" name="address" placeholder="e.g. system.connect.parakshtech.com or 192.168.1.15:3000" aria-label="Peer host or IP address" autocomplete="off" required>
           </div>
           <button type="submit">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -1037,7 +1037,7 @@
             Connect
           </button>
         </form>
-        <p class="hint">Enter peer IP address. Port 3000 is used by default; append <code>:port</code> if non-standard. Configure reciprocally for two-way sync.</p>
+        <p class="hint">Enter peer domain or IP address (e.g. <code>system.connect.parakshtech.com</code>). Port 3000 is default for raw HTTP IPs. Add each other reciprocally for two-way sync.</p>
         <p class="error" id="peerError" role="alert"></p>
         <div class="peer-list" id="peerList"></div>
       </section>
@@ -1113,7 +1113,7 @@
               <line x1="12" y1="17" x2="12" y2="21"></line>
             </svg>
           </span>
-          <input id="remoteAddress" class="mono-input" name="address" placeholder="Remote system IP address (e.g. 172.30.115.249)" aria-label="Remote system IP address" autocomplete="off" required>
+          <input id="remoteAddress" class="mono-input" name="address" placeholder="Remote host, domain, or IP (e.g. system.connect.parakshtech.com or 192.168.1.15)" aria-label="Remote system host or IP address" autocomplete="off" required>
         </div>
         <button type="submit">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1633,18 +1633,48 @@
       remoteError.textContent = '';
       if (requesterSocket) closeRequester('Previous request closed.');
 
-      const address = document.getElementById('remoteAddress').value.trim().replace(/^\[|\]$/g, '');
-      if (!isPrivateAddress(address)) {
-        remoteError.textContent = 'Enter a private LAN or VPN IP address (e.g. 172.30.115.249). Public IPs are restricted.';
+      let rawAddress = document.getElementById('remoteAddress').value.trim();
+      if (!rawAddress) return;
+
+      let wsUrl = '';
+      try {
+        let inputWithProto = rawAddress;
+        if (!/^(https?|wss?):\/\//i.test(inputWithProto)) {
+          inputWithProto = `${location.protocol}//${inputWithProto}`;
+        }
+        const parsed = new URL(inputWithProto);
+        const isSecure = parsed.protocol === 'https:' || parsed.protocol === 'wss:' || location.protocol === 'https:';
+        const wsProtocol = isSecure ? 'wss:' : 'ws:';
+        const hostname = parsed.hostname.includes(':') ? `[${parsed.hostname}]` : parsed.hostname;
+        
+        let portPart = parsed.port;
+        if (!portPart) {
+          if (parsed.protocol === 'https:' || location.protocol === 'https:') {
+            portPart = (location.hostname === parsed.hostname && location.port) ? location.port : '443';
+          } else {
+            portPart = location.port || '80';
+          }
+        }
+        
+        const portStr = ((portPart === '443' && wsProtocol === 'wss:') || (portPart === '80' && wsProtocol === 'ws:'))
+          ? ''
+          : `:${portPart}`;
+
+        wsUrl = `${wsProtocol}//${hostname}${portStr}/remote`;
+
+        if (location.protocol === 'https:' && wsProtocol === 'ws:') {
+          remoteError.textContent = 'Browsers block insecure ws:// connections from an HTTPS website. Open via HTTP or connect to a secure domain.';
+          return;
+        }
+      } catch (err) {
+        remoteError.textContent = 'Enter a valid host, domain, or IP address (e.g. system.connect.parakshtech.com or 192.168.1.15:3000).';
         return;
       }
 
-      const port = location.port || (location.protocol === 'https:' ? '443' : '80');
-      const host = address.includes(':') ? `[${address}]` : address;
-      const socket = new WebSocket(`${socketProtocol}//${host}:${port}/remote`);
+      const socket = new WebSocket(wsUrl);
       requesterSocket = socket;
       let closeReason = 'Remote connection closed.';
-      remoteSessionStatus.textContent = `Connecting to ${address}…`;
+      remoteSessionStatus.textContent = `Connecting to ${rawAddress}…`;
       
       socket.addEventListener('open', () => {
         socket.send(JSON.stringify({ type: 'REQUEST', requesterName: nodeId }));

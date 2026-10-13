@@ -24,6 +24,7 @@ if (!config.nodeId) {
 }
 
 const app = express();
+app.set('trust proxy', true);
 app.use(express.json({ limit: '500mb' }));
 app.use(express.urlencoded({ limit: '500mb', extended: true }));
 
@@ -50,21 +51,21 @@ function isPrivateAddress(address) {
 }
 
 function getBindAddresses() {
+  if (process.env.HOST) {
+    return [process.env.HOST.trim()];
+  }
   if (process.env.BIND_ADDRESSES) {
     const addresses = [...new Set(process.env.BIND_ADDRESSES.split(',').map((value) => value.trim()).filter(Boolean))];
-    if (!addresses.length || addresses.some((address) => !isIP(address) || !isPrivateAddress(address))) {
-      throw new Error('BIND_ADDRESSES must contain only this system’s private, VPN, or loopback IP addresses.');
-    }
-    return addresses;
+    if (addresses.length) return addresses;
   }
 
   const addresses = new Set();
   for (const entries of Object.values(os.networkInterfaces())) {
     for (const entry of entries || []) {
-      if (isIP(entry.address) && isPrivateAddress(entry.address)) addresses.add(entry.address);
+      if (isIP(entry.address)) addresses.add(entry.address);
     }
   }
-  if (!addresses.size) addresses.add('127.0.0.1');
+  if (!addresses.size) addresses.add('0.0.0.0');
   return [...addresses];
 }
 
@@ -74,30 +75,48 @@ function saveConfig() {
   fs.renameSync(temporaryFile, CONFIG_FILE);
 }
 
+function isValidHost(hostname) {
+  if (!hostname || typeof hostname !== 'string') return false;
+  const clean = hostname.replace(/^\[|\]$/g, '');
+  if (isIP(clean)) return true;
+  if (clean === 'localhost') return true;
+  return /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/.test(clean);
+}
+
 function normalizePeerAddress(address) {
   if (typeof address !== 'string' || !address.trim()) {
-    throw new Error('Enter a peer IP address.');
+    throw new Error('Enter a peer host address or URL.');
   }
 
   let input = address.trim();
-  if (!/^https?:\/\//i.test(input)) input = `http://${input}`;
+  const hasExplicitProtocol = /^https?:\/\//i.test(input);
+  if (!hasExplicitProtocol) {
+    const hostPart = input.split('/')[0];
+    const isDomainWithoutPort = !isIP(hostPart.replace(/^\[|\]$/g, '')) && !hostPart.includes(':') && hostPart.includes('.');
+    input = isDomainWithoutPort ? `https://${input}` : `http://${input}`;
+  }
 
   let peer;
   try {
     peer = new URL(input);
   } catch {
-    throw new Error('Enter an IP address with an optional port, such as 192.168.1.20:3000.');
+    throw new Error('Enter a valid host or URL (e.g. system.connect.parakshtech.com or 192.168.1.20:3000).');
   }
 
   if (!['http:', 'https:'].includes(peer.protocol) ||
-      !isIP(peer.hostname.replace(/^\[|\]$/g, '')) ||
+      !isValidHost(peer.hostname) ||
       peer.username || peer.password ||
       (peer.pathname !== '/' && peer.pathname !== '') ||
       peer.search || peer.hash) {
-    throw new Error('Peers must be an IP address with an optional port, not a URL path.');
+    throw new Error('Peers must be a valid host/domain with optional port (e.g. system.connect.parakshtech.com).');
   }
 
-  if (!peer.port) peer.port = String(port);
+  if (!peer.port) {
+    if (peer.protocol === 'http:' && (isIP(peer.hostname.replace(/^\[|\]$/g, '')) || peer.hostname === 'localhost')) {
+      peer.port = String(port);
+    }
+  }
+
   return `${peer.protocol}//${peer.host}`;
 }
 
@@ -105,8 +124,8 @@ function validatePeerAddress(address) {
   const normalized = normalizePeerAddress(address);
   const peer = new URL(normalized);
   const host = peer.hostname.replace(/^\[|\]$/g, '');
-  if (peer.port === String(port) &&
-      (host === '127.0.0.1' || host === '::1')) {
+  if ((peer.port === String(port) || (!peer.port && (port === 80 || port === 443))) &&
+      (host === '127.0.0.1' || host === '::1' || host === 'localhost')) {
     throw new Error('This address points back to this app.');
   }
   return normalized;
