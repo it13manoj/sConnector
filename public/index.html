@@ -48,6 +48,11 @@
       --radius-full: 9999px;
     }
 
+    html {
+      scroll-behavior: smooth;
+      height: 100%;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
     
     body {
@@ -59,9 +64,11 @@
       position: relative;
       overflow-x: hidden;
       min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
-    /* Ambient background gradient lighting */
+    /* Hardware-accelerated background lighting without repaint-heavy blur filters */
     body::before {
       content: "";
       position: fixed;
@@ -70,10 +77,11 @@
       width: 600px;
       height: 600px;
       border-radius: 50%;
-      background: radial-gradient(circle, rgba(99, 102, 241, 0.12) 0%, transparent 70%);
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.14) 0%, rgba(99, 102, 241, 0.04) 45%, transparent 70%);
       pointer-events: none;
       z-index: 0;
-      filter: blur(60px);
+      transform: translate3d(0, 0, 0);
+      will-change: transform;
     }
     body::after {
       content: "";
@@ -83,10 +91,33 @@
       width: 500px;
       height: 500px;
       border-radius: 50%;
-      background: radial-gradient(circle, rgba(16, 185, 129, 0.08) 0%, transparent 70%);
+      background: radial-gradient(circle, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.03) 45%, transparent 70%);
       pointer-events: none;
       z-index: 0;
-      filter: blur(80px);
+      transform: translate3d(0, 0, 0);
+      will-change: transform;
+    }
+
+    /* Ultra-smooth custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 9px;
+      height: 9px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(8, 12, 22, 0.7);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.16);
+      border-radius: 999px;
+      border: 2px solid rgba(8, 12, 22, 0.7);
+      background-clip: padding-box;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(99, 102, 241, 0.45);
+    }
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.16) rgba(8, 12, 22, 0.7);
     }
 
     main {
@@ -225,14 +256,13 @@
     /* Panel Card Design */
     .panel {
       position: relative;
-      background: var(--bg-surface);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      background: rgba(16, 24, 40, 0.88);
       border: 1px solid var(--border-subtle);
       border-radius: var(--radius-lg);
       padding: 24px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
       transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      contain: paint;
     }
 
     .panel:hover {
@@ -736,6 +766,9 @@
       border: 1px solid var(--border-subtle);
       border-radius: var(--radius-md);
       background: rgba(10, 16, 28, 0.4);
+      -webkit-overflow-scrolling: touch;
+      scroll-behavior: smooth;
+      overscroll-behavior: contain;
     }
 
     table {
@@ -1688,18 +1721,26 @@
       }
     }
 
-    let lastMouseMove = 0;
+    // High-performance RAF throttled mouse tracking for remote desktop
+    let pendingMove = null;
+    let moveRaf = null;
+
     remoteScreen.addEventListener('mousemove', (event) => {
-      const now = performance.now();
-      if (now - lastMouseMove < 35) return;
-      lastMouseMove = now;
       const bounds = remoteScreen.getBoundingClientRect();
       if (!bounds.width || !bounds.height) return;
-      sendRemoteInput({
-        type: 'MOVE',
+      pendingMove = {
         x: Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width)),
         y: Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height))
-      });
+      };
+      if (!moveRaf) {
+        moveRaf = requestAnimationFrame(() => {
+          moveRaf = null;
+          if (pendingMove) {
+            sendRemoteInput({ type: 'MOVE', x: pendingMove.x, y: pendingMove.y });
+            pendingMove = null;
+          }
+        });
+      }
     });
 
     remoteScreen.addEventListener('pointerdown', (event) => {
@@ -1719,10 +1760,78 @@
 
     remoteScreen.addEventListener('contextmenu', (event) => event.preventDefault());
 
+    // Smooth quantified wheel scroll for remote desktop
+    let accumulatedWheel = 0;
+    let wheelRaf = null;
+
     remoteScreen.addEventListener('wheel', (event) => {
       event.preventDefault();
-      sendRemoteInput({ type: 'WHEEL', delta: Math.max(-1200, Math.min(1200, Math.round(-event.deltaY))) });
+
+      let delta = -event.deltaY;
+      if (event.deltaMode === 1) delta *= 36;
+      else if (event.deltaMode === 2) delta *= 120;
+
+      // Scale to Windows WHEEL_DELTA (120 units per notch)
+      accumulatedWheel += delta * 1.2;
+
+      if (!wheelRaf) {
+        wheelRaf = requestAnimationFrame(() => {
+          wheelRaf = null;
+          if (Math.abs(accumulatedWheel) >= 20) {
+            const sendDelta = Math.max(-1200, Math.min(1200, Math.round(accumulatedWheel)));
+            sendRemoteInput({ type: 'WHEEL', delta: sendDelta });
+            accumulatedWheel -= sendDelta;
+            if (Math.abs(accumulatedWheel) < 10) accumulatedWheel = 0;
+          }
+        });
+      }
     }, { passive: false });
+
+    // Smooth page momentum scrolling engine
+    (function initSmoothPageScroll() {
+      let isScrolling = false;
+      let targetY = window.scrollY;
+      let currentY = window.scrollY;
+      const ease = 0.12;
+
+      function updateScroll() {
+        if (!isScrolling) return;
+        currentY += (targetY - currentY) * ease;
+        if (Math.abs(targetY - currentY) < 0.5) {
+          window.scrollTo(0, targetY);
+          isScrolling = false;
+          return;
+        }
+        window.scrollTo(0, Math.round(currentY));
+        requestAnimationFrame(updateScroll);
+      }
+
+      window.addEventListener('wheel', (e) => {
+        const target = e.target;
+        if (
+          e.ctrlKey ||
+          target.closest('#remoteScreenWrap') ||
+          target.closest('.table-wrap') ||
+          target.closest('textarea') ||
+          document.body.classList.contains('remote-view-active')
+        ) {
+          return;
+        }
+
+        e.preventDefault();
+        const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+        let delta = e.deltaY;
+        if (e.deltaMode === 1) delta *= 36;
+        else if (e.deltaMode === 2) delta *= 120;
+
+        targetY = Math.max(0, Math.min(maxScroll, targetY + delta));
+        if (!isScrolling) {
+          isScrolling = true;
+          currentY = window.scrollY;
+          requestAnimationFrame(updateScroll);
+        }
+      }, { passive: false });
+    })();
 
     const pressedRemoteKeys = new Set();
     remoteScreen.addEventListener('keydown', (event) => {

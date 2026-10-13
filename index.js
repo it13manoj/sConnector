@@ -24,7 +24,9 @@ if (!config.nodeId) {
 }
 
 const app = express();
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '500mb' }));
+app.use(express.urlencoded({ limit: '500mb', extended: true }));
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 const localClients = new Set();
@@ -139,7 +141,11 @@ async function syncPeer(url) {
         void syncAllPeersExcept(url);
       }
     }
+    const previous = peerStates.get(url);
     peerStates.set(url, { status: 'online', lastSeen: Date.now(), error: null });
+    if (previous?.status !== 'online') {
+      console.log(`[SYNC] ${url} connected.`);
+    }
     return response.data;
   } catch (error) {
     const message = error.response
@@ -147,8 +153,11 @@ async function syncPeer(url) {
       : error.code === 'ECONNABORTED'
         ? 'Connection timed out'
         : 'Could not connect';
-    peerStates.set(url, { status: 'offline', lastSeen: peerStates.get(url)?.lastSeen || null, error: message });
-    console.warn(`[SYNC] ${url}: ${message}`);
+    const previous = peerStates.get(url);
+    peerStates.set(url, { status: 'offline', lastSeen: previous?.lastSeen || null, error: message });
+    if (previous?.status !== 'offline' || previous?.error !== message) {
+      console.warn(`[SYNC] ${url}: ${message}`);
+    }
     return null;
   }
 }
