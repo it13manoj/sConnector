@@ -9,6 +9,7 @@ const path = require('path');
 const { isIP } = require('net');
 const store = require('./sync');
 const { createRemoteDesktop } = require('./remote-control');
+const { createRelayClient } = require('./relay-client');
 
 const CONFIG_FILE = path.join(__dirname, 'config.json');
 const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
@@ -34,6 +35,22 @@ const localClients = new Set();
 const peerStates = new Map();
 const remoteDesktop = createRemoteDesktop(config.nodeId);
 const syncIntervalMs = 5000;
+
+// Connect to central Hub if configured (allows cross-network connection)
+if (process.env.HUB_URL) {
+  const relayClient = createRelayClient({
+    hubUrl: process.env.HUB_URL,
+    nodeId: config.nodeId,
+    getLocalIps: () => reachableAddresses,
+    store,
+    remoteDesktop,
+    onSyncChange: () => {
+      sendLocalUpdate();
+      void syncAllPeers();
+    }
+  });
+  relayClient.start();
+}
 
 function isPrivateAddress(address) {
   if (address === '::1') return true;
@@ -131,12 +148,16 @@ function validatePeerAddress(address) {
 }
 
 function publicPeers() {
-  return config.peers.map((url) => ({
-    address: new URL(url).host,
-    status: peerStates.get(url)?.status || 'checking',
-    lastSeen: peerStates.get(url)?.lastSeen || null,
-    error: peerStates.get(url)?.error || null
-  }));
+  return config.peers.map((url) => {
+    const host = new URL(url).hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    const isRelayed = remoteDesktop.hasRegisteredHost(host);
+    return {
+      address: new URL(url).host,
+      status: peerStates.get(url)?.status || (isRelayed ? 'online' : 'checking'),
+      lastSeen: peerStates.get(url)?.lastSeen || (isRelayed ? Date.now() : null),
+      error: peerStates.get(url)?.error || null
+    };
+  });
 }
 
 function sendLocalUpdate() {
@@ -145,6 +166,30 @@ function sendLocalUpdate() {
 }
 
 async function syncPeer(url) {
+  const peerHost = new URL(url).hostname.replace(/^\[|\]$/g, '').toLowerCase();
+
+  // If host is connected to Relay Hub (e.g. across different networks), sync over WebSocket!
+  if (remoteDesktop.hasRegisteredHost(peerHost)) {
+    try {
+      const res = await remoteDesktop.syncOverRelay(peerHost, store.getAll());
+      if (res && res.payload) {
+        const changed = store.merge(res.payload);
+        if (changed) {
+          sendLocalUpdate();
+          void syncAllPeersExcept(url);
+        }
+      }
+      const previous = peerStates.get(url);
+      peerStates.set(url, { status: 'online', lastSeen: Date.now(), error: null });
+      if (previous?.status !== 'online') {
+        console.log(`[SYNC] ${url} connected via relay.`);
+      }
+      return res;
+    } catch (relayErr) {
+      // Fallback to HTTP
+    }
+  }
+
   try {
     const response = await axios.post(`${url}/api/sync`, {
       type: 'UPDATE',
@@ -166,10 +211,12 @@ async function syncPeer(url) {
     }
     return response.data;
   } catch (error) {
+    const peerHost = new URL(url).hostname.replace(/^\[|\]$/g, '');
+    const isPrivate = isPrivateAddress(peerHost);
     const message = error.response
       ? `Peer returned HTTP ${error.response.status}`
       : error.code === 'ECONNABORTED'
-        ? 'Connection timed out'
+        ? (isPrivate ? 'Timed out (Private IP unreachable from public internet)' : 'Connection timed out')
         : 'Could not connect';
     const previous = peerStates.get(url);
     peerStates.set(url, { status: 'offline', lastSeen: previous?.lastSeen || null, error: message });
@@ -256,7 +303,8 @@ app.get('/api/node', (req, res) => {
     nodeId: config.nodeId,
     port,
     addresses: reachableAddresses,
-    peers: publicPeers()
+    peers: publicPeers(),
+    registeredHosts: remoteDesktop.getRegisteredHosts()
   });
 });
 

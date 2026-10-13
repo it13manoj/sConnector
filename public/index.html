@@ -1643,31 +1643,34 @@
           inputWithProto = `${location.protocol}//${inputWithProto}`;
         }
         const parsed = new URL(inputWithProto);
-        const isSecure = parsed.protocol === 'https:' || parsed.protocol === 'wss:' || location.protocol === 'https:';
-        const wsProtocol = isSecure ? 'wss:' : 'ws:';
-        const hostname = parsed.hostname.includes(':') ? `[${parsed.hostname}]` : parsed.hostname;
-        
-        let portPart = parsed.port;
-        if (!portPart) {
-          if (parsed.protocol === 'https:' || location.protocol === 'https:') {
-            portPart = (location.hostname === parsed.hostname && location.port) ? location.port : '443';
-          } else {
-            portPart = location.port || '80';
+        const targetHost = parsed.hostname.replace(/^\[|\]$/g, '');
+
+        // If on live HTTPS domain and target is a private LAN IP (e.g. 10.x, 192.168.x),
+        // connect through this central hub relay to reach the target across networks!
+        if (location.protocol === 'https:' && (isPrivateAddress(targetHost) || targetHost === location.hostname)) {
+          wsUrl = `wss://${location.host}/remote`;
+        } else {
+          const isSecure = parsed.protocol === 'https:' || parsed.protocol === 'wss:' || location.protocol === 'https:';
+          const wsProtocol = isSecure ? 'wss:' : 'ws:';
+          const hostname = parsed.hostname.includes(':') ? `[${parsed.hostname}]` : parsed.hostname;
+          let portPart = parsed.port;
+          if (!portPart) {
+            portPart = (parsed.protocol === 'https:' || location.protocol === 'https:')
+              ? (location.hostname === parsed.hostname && location.port ? location.port : '443')
+              : (location.port || '80');
+          }
+          const portStr = ((portPart === '443' && wsProtocol === 'wss:') || (portPart === '80' && wsProtocol === 'ws:'))
+            ? ''
+            : `:${portPart}`;
+          wsUrl = `${wsProtocol}//${hostname}${portStr}/remote`;
+
+          if (location.protocol === 'https:' && wsProtocol === 'ws:') {
+            remoteError.textContent = 'Browsers block insecure ws:// connections from an HTTPS website. Open via HTTP or connect to a secure domain.';
+            return;
           }
         }
-        
-        const portStr = ((portPart === '443' && wsProtocol === 'wss:') || (portPart === '80' && wsProtocol === 'ws:'))
-          ? ''
-          : `:${portPart}`;
-
-        wsUrl = `${wsProtocol}//${hostname}${portStr}/remote`;
-
-        if (location.protocol === 'https:' && wsProtocol === 'ws:') {
-          remoteError.textContent = 'Browsers block insecure ws:// connections from an HTTPS website. Open via HTTP or connect to a secure domain.';
-          return;
-        }
       } catch (err) {
-        remoteError.textContent = 'Enter a valid host, domain, or IP address (e.g. system.connect.parakshtech.com or 192.168.1.15:3000).';
+        remoteError.textContent = 'Enter a valid host, domain, or IP address (e.g. 10.103.89.113 or system.connect.parakshtech.com).';
         return;
       }
 
@@ -1677,7 +1680,11 @@
       remoteSessionStatus.textContent = `Connecting to ${rawAddress}…`;
       
       socket.addEventListener('open', () => {
-        socket.send(JSON.stringify({ type: 'REQUEST', requesterName: nodeId }));
+        socket.send(JSON.stringify({
+          type: 'REQUEST',
+          target: rawAddress,
+          requesterName: nodeId
+        }));
       });
       socket.addEventListener('message', (messageEvent) => {
         let packet;
