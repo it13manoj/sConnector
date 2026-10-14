@@ -530,6 +530,13 @@
       box-shadow: 0 0 6px #34d399;
     }
 
+    .peer-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
     /* Empty States */
     .empty {
       padding: 28px 16px;
@@ -1402,11 +1409,24 @@
         statusWrap.append(document.createTextNode(statusText));
         details.append(statusWrap);
 
+        const actions = element('div', 'peer-actions');
+
+        const remoteBtn = element('button', 'secondary', 'Access Desktop');
+        remoteBtn.type = 'button';
+        remoteBtn.title = `Request remote desktop access to ${peer.address}`;
+        remoteBtn.addEventListener('click', () => {
+          const input = document.getElementById('remoteAddress');
+          input.value = peer.address;
+          document.getElementById('remoteDesktopPanel').scrollIntoView({ behavior: 'smooth' });
+          document.getElementById('remoteConnectForm').requestSubmit();
+        });
+
         const remove = element('button', 'secondary danger', 'Disconnect');
         remove.type = 'button';
         remove.addEventListener('click', () => removePeer(peer.address));
         
-        card.append(details, remove);
+        actions.append(remoteBtn, remove);
+        card.append(details, actions);
         peerList.append(card);
       }
     }
@@ -1637,41 +1657,27 @@
       if (!rawAddress) return;
 
       let wsUrl = '';
-      try {
-        let inputWithProto = rawAddress;
-        if (!/^(https?|wss?):\/\//i.test(inputWithProto)) {
-          inputWithProto = `${location.protocol}//${inputWithProto}`;
-        }
-        const parsed = new URL(inputWithProto);
-        const targetHost = parsed.hostname.replace(/^\[|\]$/g, '');
-
-        // If on live HTTPS domain and target is a private LAN IP (e.g. 10.x, 192.168.x),
-        // connect through this central hub relay to reach the target across networks!
-        if (location.protocol === 'https:' && (isPrivateAddress(targetHost) || targetHost === location.hostname)) {
-          wsUrl = `wss://${location.host}/remote`;
-        } else {
-          const isSecure = parsed.protocol === 'https:' || parsed.protocol === 'wss:' || location.protocol === 'https:';
+      if (location.protocol === 'https:') {
+        // When loaded over HTTPS (live Hub), route via secure WebSocket relay so any system across any network can be reached
+        wsUrl = `wss://${location.host}/remote`;
+      } else {
+        try {
+          let inputWithProto = rawAddress;
+          if (!/^(https?|wss?):\/\//i.test(inputWithProto)) {
+            inputWithProto = `${location.protocol}//${inputWithProto}`;
+          }
+          const parsed = new URL(inputWithProto);
+          const isSecure = parsed.protocol === 'https:' || parsed.protocol === 'wss:';
           const wsProtocol = isSecure ? 'wss:' : 'ws:';
           const hostname = parsed.hostname.includes(':') ? `[${parsed.hostname}]` : parsed.hostname;
-          let portPart = parsed.port;
-          if (!portPart) {
-            portPart = (parsed.protocol === 'https:' || location.protocol === 'https:')
-              ? (location.hostname === parsed.hostname && location.port ? location.port : '443')
-              : (location.port || '80');
-          }
+          const portPart = parsed.port || (isSecure ? '443' : (location.port || '80'));
           const portStr = ((portPart === '443' && wsProtocol === 'wss:') || (portPart === '80' && wsProtocol === 'ws:'))
             ? ''
             : `:${portPart}`;
           wsUrl = `${wsProtocol}//${hostname}${portStr}/remote`;
-
-          if (location.protocol === 'https:' && wsProtocol === 'ws:') {
-            remoteError.textContent = 'Browsers block insecure ws:// connections from an HTTPS website. Open via HTTP or connect to a secure domain.';
-            return;
-          }
+        } catch {
+          wsUrl = `ws://${location.host}/remote`;
         }
-      } catch (err) {
-        remoteError.textContent = 'Enter a valid host, domain, or IP address (e.g. 10.103.89.113 or system.connect.parakshtech.com).';
-        return;
       }
 
       const socket = new WebSocket(wsUrl);

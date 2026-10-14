@@ -38,7 +38,7 @@ function createRelayClient({ hubUrl, nodeId, getLocalIps, store, remoteDesktop, 
     }
 
     try {
-      ws = new WebSocket(wsUrl);
+      ws = new WebSocket(wsUrl, { family: 4 });
     } catch (error) {
       console.warn('[RELAY] Could not create WebSocket:', error.message);
       scheduleReconnect();

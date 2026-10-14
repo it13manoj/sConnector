@@ -1,4 +1,6 @@
 require('dotenv').config();
+const dns = require('dns');
+try { dns.setDefaultResultOrder('ipv4first'); } catch {}
 const express = require('express');
 const http = require('http');
 const axios = require('axios');
@@ -33,8 +35,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const localClients = new Set();
 const peerStates = new Map();
-const remoteDesktop = createRemoteDesktop(config.nodeId);
 const syncIntervalMs = 5000;
+const remoteDesktop = createRemoteDesktop(config.nodeId, {
+  onHostRegistered: (host) => {
+    console.log(`[RELAY] Host "${host.nodeId}" connected, syncing peers.`);
+    void syncAllPeers();
+  }
+});
 
 // Connect to central Hub if configured (allows cross-network connection)
 if (process.env.HUB_URL) {
@@ -190,6 +197,18 @@ async function syncPeer(url) {
     }
   }
 
+  const isPrivate = isPrivateAddress(peerHost);
+  const isPublicServer = !reachableAddresses.some((ip) => isPrivateAddress(ip));
+  if (isPrivate && isPublicServer) {
+    const previous = peerStates.get(url);
+    const message = 'System offline (open SConnect on PC to connect)';
+    peerStates.set(url, { status: 'offline', lastSeen: previous?.lastSeen || null, error: message });
+    if (previous?.status !== 'offline') {
+      console.warn(`[SYNC] ${url}: ${message}`);
+    }
+    return null;
+  }
+
   try {
     const response = await axios.post(`${url}/api/sync`, {
       type: 'UPDATE',
@@ -211,16 +230,14 @@ async function syncPeer(url) {
     }
     return response.data;
   } catch (error) {
-    const peerHost = new URL(url).hostname.replace(/^\[|\]$/g, '');
-    const isPrivate = isPrivateAddress(peerHost);
     const message = error.response
       ? `Peer returned HTTP ${error.response.status}`
       : error.code === 'ECONNABORTED'
-        ? (isPrivate ? 'Timed out (Private IP unreachable from public internet)' : 'Connection timed out')
+        ? (isPrivate ? 'System offline (open SConnect on PC to connect)' : 'Connection timed out')
         : 'Could not connect';
     const previous = peerStates.get(url);
     peerStates.set(url, { status: 'offline', lastSeen: previous?.lastSeen || null, error: message });
-    if (previous?.status !== 'offline' || previous?.error !== message) {
+    if (previous?.status !== 'offline') {
       console.warn(`[SYNC] ${url}: ${message}`);
     }
     return null;

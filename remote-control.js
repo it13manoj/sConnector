@@ -14,7 +14,19 @@ function normalizeAddress(address) {
   return (address || '').replace(/^::ffff:/i, '').split('%')[0].toLowerCase();
 }
 
-function createRemoteDesktop(nodeId) {
+function extractTargetKey(target) {
+  if (!target || typeof target !== 'string') return '';
+  let clean = target.trim();
+  try {
+    if (/^[a-zA-Z]+:\/\//.test(clean)) {
+      clean = new URL(clean).hostname;
+    }
+  } catch {}
+  return clean.replace(/^\[|\]$/g, '').split(':')[0].toLowerCase().trim();
+}
+
+function createRemoteDesktop(nodeId, options = {}) {
+  const { onHostRegistered } = options;
   const watchers = new Set();
   const pending = new Map();
   const connections = new Set();
@@ -277,14 +289,16 @@ function createRemoteDesktop(nodeId) {
 
   function hasRegisteredHost(target) {
     if (!target) return false;
-    const clean = target.replace(/^\[|\]$/g, '').split(':')[0].toLowerCase();
-    return registeredHostsByIp.has(clean) || registeredHosts.has(target) || registeredHosts.has(clean);
+    const clean = extractTargetKey(target);
+    const raw = String(target).trim();
+    return registeredHostsByIp.has(clean) || registeredHosts.has(clean) || registeredHosts.has(raw) || registeredHostsByIp.has(raw.toLowerCase());
   }
 
   function getRegisteredHost(target) {
     if (!target) return null;
-    const clean = target.replace(/^\[|\]$/g, '').split(':')[0].toLowerCase();
-    return registeredHostsByIp.get(clean) || registeredHosts.get(target) || registeredHosts.get(clean) || null;
+    const clean = extractTargetKey(target);
+    const raw = String(target).trim();
+    return registeredHostsByIp.get(clean) || registeredHosts.get(clean) || registeredHosts.get(raw) || registeredHostsByIp.get(raw.toLowerCase()) || null;
   }
 
   function getRegisteredHosts() {
@@ -363,18 +377,27 @@ function createRemoteDesktop(nodeId) {
             platform: packet.platform
           };
           registeredHosts.set(packet.nodeId, hostEntry);
+          registeredHosts.set(packet.nodeId.toLowerCase(), hostEntry);
           if (Array.isArray(packet.localIps)) {
             for (const ip of packet.localIps) {
-              registeredHostsByIp.set(ip.toLowerCase(), hostEntry);
+              const cleanIp = extractTargetKey(ip);
+              if (cleanIp) registeredHostsByIp.set(cleanIp, hostEntry);
             }
           }
-          if (clientIp && clientIp !== 'unknown') {
-            registeredHostsByIp.set(clientIp.toLowerCase(), hostEntry);
+          const cleanClientIp = extractTargetKey(clientIp);
+          if (cleanClientIp && cleanClientIp !== 'unknown') {
+            registeredHostsByIp.set(cleanClientIp, hostEntry);
           }
-          registeredHostsByIp.set(packet.nodeId.toLowerCase(), hostEntry);
+          const cleanNodeId = extractTargetKey(packet.nodeId);
+          if (cleanNodeId) {
+            registeredHostsByIp.set(cleanNodeId, hostEntry);
+          }
 
           send(socket, { type: 'HOST_REGISTERED', nodeId: packet.nodeId, publicIp: clientIp });
           console.log(`[RELAY] Registered host "${packet.nodeId}" (IPs: ${(packet.localIps || []).join(', ')}, Public: ${clientIp})`);
+          if (typeof onHostRegistered === 'function') {
+            try { onHostRegistered(hostEntry); } catch (e) { console.warn('[RELAY] onHostRegistered error:', e.message); }
+          }
           return;
         }
 
@@ -469,8 +492,8 @@ function createRemoteDesktop(nodeId) {
           role = 'requester';
 
           const target = (packet.target || packet.address || '').trim();
-          const cleanTarget = target.replace(/^\[|\]$/g, '').split(':')[0].toLowerCase();
-          const hostEntry = registeredHostsByIp.get(cleanTarget) || registeredHosts.get(target);
+          const cleanTarget = extractTargetKey(target);
+          const hostEntry = getRegisteredHost(target);
 
           // CASE A: Target host is registered via relay!
           if (hostEntry && hostEntry.socket.readyState === WebSocket.OPEN) {
