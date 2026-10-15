@@ -10,3 +10,4 @@ node index.js
 echo.
 echo sConnector stopped. Press any key to exit.
 pause >nul
+
