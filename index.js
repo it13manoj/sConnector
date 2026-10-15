@@ -22,7 +22,8 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 const reachableAddresses = getReachableAddresses();
 config.peers = Array.isArray(config.peers) ? config.peers : [];
 const localHostname = os.hostname().replace(/[^a-zA-Z0-9_-]/g, '') || 'node';
-if (!config.nodeId || (config.nodeId === 'node-SAHIL-8c480699' && os.hostname().toLowerCase() !== 'sahil')) {
+const expectedPrefix = `node-${localHostname}-`;
+if (!config.nodeId || !config.nodeId.startsWith(expectedPrefix)) {
   config.nodeId = `node-${localHostname}-${crypto.randomUUID().slice(0, 8)}`;
   saveConfig();
 }
@@ -175,6 +176,16 @@ function validatePeerAddress(address) {
   return normalized;
 }
 
+function getBestDisplayIp(localIps, publicIp) {
+  if (Array.isArray(localIps)) {
+    const ipv4s = localIps.filter((ip) => typeof ip === 'string' && /^\d+\.\d+\.\d+\.\d+$/.test(ip) && ip !== '127.0.0.1');
+    const physicalIps = ipv4s.filter((ip) => !ip.startsWith('172.22.') && !ip.startsWith('172.17.'));
+    if (physicalIps.length) return physicalIps[0];
+    if (ipv4s.length) return ipv4s[0];
+  }
+  return publicIp || null;
+}
+
 function publicPeers() {
   const list = [];
   const seenAddresses = new Set();
@@ -202,7 +213,7 @@ function publicPeers() {
   const activeHosts = remoteDesktop.getRegisteredHosts();
   for (const h of activeHosts) {
     if (h.nodeId === config.nodeId) continue;
-    const ip = (h.localIps && h.localIps.length) ? h.localIps[0] : h.publicIp;
+    const ip = getBestDisplayIp(h.localIps, h.publicIp);
     const addr = ip ? `${ip}:${port}` : h.nodeId;
     const cleanIp = (ip || '').toLowerCase();
     const cleanNode = (h.nodeId || '').toLowerCase();
