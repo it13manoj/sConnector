@@ -100,6 +100,17 @@ function createRelayClient({ hubUrl, nodeId, getLocalIps, store, remoteDesktop, 
         } catch (err) {
           console.warn('[RELAY] Error processing sync packet:', err.message);
         }
+      } else if (packet.type === 'RELAY_FORWARD_SYNC_ACK') {
+        const pending = pendingForwardSyncs.get(packet.syncId);
+        if (pending) {
+          clearTimeout(pending.timeout);
+          pendingForwardSyncs.delete(packet.syncId);
+          if (packet.success) {
+            pending.resolve(packet);
+          } else {
+            pending.reject(new Error(packet.error || 'Relay sync failed'));
+          }
+        }
       }
     });
 
@@ -115,6 +126,29 @@ function createRelayClient({ hubUrl, nodeId, getLocalIps, store, remoteDesktop, 
     });
   }
 
+  const pendingForwardSyncs = new Map();
+
+  function syncOverHub(target, payload) {
+    return new Promise((resolve, reject) => {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        return reject(new Error('Relay client is not connected to Hub.'));
+      }
+      const syncId = require('crypto').randomUUID();
+      const timeout = setTimeout(() => {
+        pendingForwardSyncs.delete(syncId);
+        reject(new Error('Relay Hub sync timed out.'));
+      }, 5000);
+      pendingForwardSyncs.set(syncId, { resolve, reject, timeout });
+
+      send({
+        type: 'RELAY_FORWARD_SYNC',
+        syncId,
+        target,
+        payload
+      });
+    });
+  }
+
   function scheduleReconnect() {
     clearTimeout(reconnectTimer);
     reconnectTimer = setTimeout(() => {
@@ -125,6 +159,7 @@ function createRelayClient({ hubUrl, nodeId, getLocalIps, store, remoteDesktop, 
   return {
     start: connect,
     send,
+    syncOverHub,
     isConnected: () => isConnected
   };
 }

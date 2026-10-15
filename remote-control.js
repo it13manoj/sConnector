@@ -441,6 +441,35 @@ function createRemoteDesktop(nodeId, options = {}) {
               pendingSyncs.delete(packet.syncId);
               pendingSync.resolve(packet);
             }
+          } else if (packet.type === 'RELAY_FORWARD_SYNC') {
+            const targetHost = getRegisteredHost(packet.target);
+            if (!targetHost || targetHost.socket.readyState !== WebSocket.OPEN) {
+              send(socket, {
+                type: 'RELAY_FORWARD_SYNC_ACK',
+                syncId: packet.syncId,
+                success: false,
+                error: `System "${packet.target}" is not registered on this Hub.`
+              });
+              return;
+            }
+
+            syncOverRelay(packet.target, packet.payload)
+              .then((res) => {
+                send(socket, {
+                  type: 'RELAY_FORWARD_SYNC_ACK',
+                  syncId: packet.syncId,
+                  success: true,
+                  payload: res.payload
+                });
+              })
+              .catch((err) => {
+                send(socket, {
+                  type: 'RELAY_FORWARD_SYNC_ACK',
+                  syncId: packet.syncId,
+                  success: false,
+                  error: err.message
+                });
+              });
           }
           return;
         }

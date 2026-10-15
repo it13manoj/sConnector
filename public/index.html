@@ -987,7 +987,7 @@
       <div class="header-status">
         <div class="live-indicator">
           <span class="live-dot"></span>
-          <span>Live Sync Active</span>
+          <span id="headerStatusText">Live Sync Active</span>
         </div>
       </div>
     </header>
@@ -1384,7 +1384,10 @@
             <line x1="6" y1="6" x2="6.01" y2="6"></line>
             <line x1="6" y1="18" x2="6.01" y2="18"></line>
           </svg>
-          <span>No peer systems connected yet. Enter an IP above to connect.</span>
+          <strong style="font-size: 0.94rem; color: #f1f5f9;">No peer systems connected yet</strong>
+          <span style="font-size: 0.8rem; opacity: 0.75; max-width: 420px; text-align: center; line-height: 1.5;">
+            To connect a system from another network, run <code>npm start</code> on that computer. It will automatically connect to this Relay Hub and appear here.
+          </span>
         `;
         peerList.append(empty);
         return;
@@ -1401,7 +1404,7 @@
         statusWrap.append(element('span', 'peer-state-dot'));
 
         const statusText = peer.status === 'online'
-          ? `Online${peer.lastSeen ? ` • synced ${new Date(peer.lastSeen).toLocaleTimeString()}` : ''}`
+          ? `Online • synced ${peer.lastSeen ? new Date(peer.lastSeen).toLocaleTimeString() : 'now'}${peer.isConfigured === false ? ' (via Hub Relay)' : ''}`
           : peer.status === 'offline'
             ? `Offline • ${peer.error || 'reconnecting automatically'}`
             : 'Checking connection…';
@@ -1420,21 +1423,38 @@
           document.getElementById('remoteDesktopPanel').scrollIntoView({ behavior: 'smooth' });
           document.getElementById('remoteConnectForm').requestSubmit();
         });
+        actions.append(remoteBtn);
 
-        const remove = element('button', 'secondary danger', 'Disconnect');
-        remove.type = 'button';
-        remove.addEventListener('click', () => removePeer(peer.address));
+        if (peer.isConfigured !== false) {
+          const remove = element('button', 'secondary danger', 'Disconnect');
+          remove.type = 'button';
+          remove.addEventListener('click', () => removePeer(peer.address));
+          actions.append(remove);
+        }
         
-        actions.append(remoteBtn, remove);
         card.append(details, actions);
         peerList.append(card);
       }
     }
 
+    let serverInfo = null;
+
     async function refreshNode() {
       const node = await request('/api/node');
       nodeId = node.nodeId;
+      serverInfo = node;
       renderPeers(node.peers);
+
+      const liveText = document.getElementById('headerStatusText');
+      if (liveText) {
+        if (node.isHub) {
+          liveText.textContent = 'Relay Hub Active';
+        } else if (node.hubUrl) {
+          liveText.textContent = `Hub Connected (${node.nodeId})`;
+        } else {
+          liveText.textContent = `Live Sync Active (${node.nodeId})`;
+        }
+      }
     }
 
     document.getElementById('peerForm').addEventListener('submit', async (event) => {
@@ -1660,6 +1680,13 @@
       if (location.protocol === 'https:') {
         // When loaded over HTTPS (live Hub), route via secure WebSocket relay so any system across any network can be reached
         wsUrl = `wss://${location.host}/remote`;
+      } else if (serverInfo && serverInfo.hubUrl) {
+        // When running on a local node connected to the central Hub, route across networks via Hub!
+        const cleanHub = serverInfo.hubUrl.trim().replace(/\/+$/, '');
+        const hubParsed = new URL(/^https?:\/\//i.test(cleanHub) ? cleanHub : `https://${cleanHub}`);
+        const hubProto = (hubParsed.protocol === 'https:' || hubParsed.protocol === 'wss:') ? 'wss:' : 'ws:';
+        const hubPort = (hubParsed.port && hubParsed.port !== '80' && hubParsed.port !== '443') ? `:${hubParsed.port}` : '';
+        wsUrl = `${hubProto}//${hubParsed.hostname}${hubPort}/remote`;
       } else {
         try {
           let inputWithProto = rawAddress;

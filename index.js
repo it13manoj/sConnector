@@ -21,10 +21,29 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
 }
 const reachableAddresses = getReachableAddresses();
 config.peers = Array.isArray(config.peers) ? config.peers : [];
-if (!config.nodeId) {
-  config.nodeId = `node-${os.hostname()}-${crypto.randomUUID().slice(0, 8)}`;
+const localHostname = os.hostname().replace(/[^a-zA-Z0-9_-]/g, '') || 'node';
+if (!config.nodeId || (config.nodeId === 'node-SAHIL-8c480699' && os.hostname().toLowerCase() !== 'sahil')) {
+  config.nodeId = `node-${localHostname}-${crypto.randomUUID().slice(0, 8)}`;
   saveConfig();
 }
+
+function isSelfHub(hubUrl) {
+  if (!hubUrl) return true;
+  try {
+    const parsed = new URL(hubUrl);
+    const hostname = parsed.hostname.toLowerCase();
+    if (['localhost', '127.0.0.1', '::1', '0.0.0.0'].includes(hostname)) return true;
+    for (const addr of reachableAddresses) {
+      if (addr.toLowerCase() === hostname) return true;
+    }
+    if (hostname === 'system.connect.parakshtech.com') {
+      if (reachableAddresses.includes('173.212.235.87')) return true;
+    }
+  } catch {}
+  return false;
+}
+
+const isHub = isSelfHub(process.env.HUB_URL);
 
 const app = express();
 app.set('trust proxy', true);
@@ -43,9 +62,9 @@ const remoteDesktop = createRemoteDesktop(config.nodeId, {
   }
 });
 
-// Connect to central Hub if configured (allows cross-network connection)
-if (process.env.HUB_URL) {
-  const relayClient = createRelayClient({
+let relayClient = null;
+if (process.env.HUB_URL && !isHub) {
+  relayClient = createRelayClient({
     hubUrl: process.env.HUB_URL,
     nodeId: config.nodeId,
     getLocalIps: () => reachableAddresses,
@@ -57,6 +76,8 @@ if (process.env.HUB_URL) {
     }
   });
   relayClient.start();
+} else if (isHub) {
+  console.log('[HUB] Running as central Relay Hub on https://system.connect.parakshtech.com');
 }
 
 function isPrivateAddress(address) {
@@ -155,16 +176,55 @@ function validatePeerAddress(address) {
 }
 
 function publicPeers() {
-  return config.peers.map((url) => {
-    const host = new URL(url).hostname.replace(/^\[|\]$/g, '').toLowerCase();
-    const isRelayed = remoteDesktop.hasRegisteredHost(host);
-    return {
-      address: new URL(url).host,
-      status: peerStates.get(url)?.status || (isRelayed ? 'online' : 'checking'),
-      lastSeen: peerStates.get(url)?.lastSeen || (isRelayed ? Date.now() : null),
-      error: peerStates.get(url)?.error || null
-    };
-  });
+  const list = [];
+  const seenAddresses = new Set();
+
+  for (const url of config.peers) {
+    try {
+      const u = new URL(url);
+      const host = u.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+      const isRelayed = remoteDesktop.hasRegisteredHost(host);
+      const state = peerStates.get(url);
+      const addr = u.host;
+      seenAddresses.add(addr.toLowerCase());
+      if (host) seenAddresses.add(host);
+      list.push({
+        address: addr,
+        status: isRelayed ? 'online' : (state?.status || 'checking'),
+        lastSeen: isRelayed ? Date.now() : (state?.lastSeen || null),
+        error: isRelayed ? null : (state?.error || null),
+        isConfigured: true
+      });
+    } catch {}
+  }
+
+  // Active hosts connected via WebSocket relay (Hub mode)
+  const activeHosts = remoteDesktop.getRegisteredHosts();
+  for (const h of activeHosts) {
+    if (h.nodeId === config.nodeId) continue;
+    const ip = (h.localIps && h.localIps.length) ? h.localIps[0] : h.publicIp;
+    const addr = ip ? `${ip}:${port}` : h.nodeId;
+    const cleanIp = (ip || '').toLowerCase();
+    const cleanNode = (h.nodeId || '').toLowerCase();
+
+    if (!seenAddresses.has(addr.toLowerCase()) && !seenAddresses.has(cleanIp) && !seenAddresses.has(cleanNode)) {
+      seenAddresses.add(addr.toLowerCase());
+      if (cleanIp) seenAddresses.add(cleanIp);
+      if (cleanNode) seenAddresses.add(cleanNode);
+      list.push({
+        address: addr,
+        nodeId: h.nodeId,
+        status: 'online',
+        lastSeen: Date.now(),
+        error: null,
+        publicIp: h.publicIp,
+        platform: h.platform,
+        isConfigured: false
+      });
+    }
+  }
+
+  return list;
 }
 
 function sendLocalUpdate() {
@@ -175,7 +235,7 @@ function sendLocalUpdate() {
 async function syncPeer(url) {
   const peerHost = new URL(url).hostname.replace(/^\[|\]$/g, '').toLowerCase();
 
-  // If host is connected to Relay Hub (e.g. across different networks), sync over WebSocket!
+  // 1. If host is connected directly to Relay Hub, sync over WebSocket!
   if (remoteDesktop.hasRegisteredHost(peerHost)) {
     try {
       const res = await remoteDesktop.syncOverRelay(peerHost, store.getAll());
@@ -193,7 +253,29 @@ async function syncPeer(url) {
       }
       return res;
     } catch (relayErr) {
-      // Fallback to HTTP
+      // Fallback
+    }
+  }
+
+  // 2. If this node is connected to a central Hub, sync through the Hub!
+  if (relayClient && relayClient.isConnected()) {
+    try {
+      const res = await relayClient.syncOverHub(peerHost, store.getAll());
+      if (res && res.payload) {
+        const changed = store.merge(res.payload);
+        if (changed) {
+          sendLocalUpdate();
+          void syncAllPeersExcept(url);
+        }
+      }
+      const previous = peerStates.get(url);
+      peerStates.set(url, { status: 'online', lastSeen: Date.now(), error: null });
+      if (previous?.status !== 'online') {
+        console.log(`[SYNC] ${url} connected via Hub relay.`);
+      }
+      return res;
+    } catch (hubErr) {
+      // Fallback
     }
   }
 
@@ -321,7 +403,9 @@ app.get('/api/node', (req, res) => {
     port,
     addresses: reachableAddresses,
     peers: publicPeers(),
-    registeredHosts: remoteDesktop.getRegisteredHosts()
+    registeredHosts: remoteDesktop.getRegisteredHosts(),
+    isHub,
+    hubUrl: isHub ? null : (process.env.HUB_URL || null)
   });
 });
 
